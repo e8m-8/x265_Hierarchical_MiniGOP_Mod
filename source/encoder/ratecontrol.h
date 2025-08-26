@@ -173,6 +173,8 @@ public:
     int     m_predType;       /* Type of slice predictors to be used - depends on the slice type */
     double  m_ipOffset;
     double  m_pbOffset;
+    double  m_bbOffset[5];
+    uint8_t m_qpLayer;
     int64_t m_bframeBits;
     int64_t m_currentSatd;
     int     m_qpConstant[3];

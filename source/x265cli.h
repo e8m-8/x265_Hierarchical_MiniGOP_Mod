@@ -188,6 +188,7 @@ static const struct option long_options[] =
     { "no-rc-grain",          no_argument, NULL, 0 },
     { "ipratio",        required_argument, NULL, 0 },
     { "pbratio",        required_argument, NULL, 0 },
+    { "bbratio",        required_argument, NULL, 0 },
     { "qcomp",          required_argument, NULL, 0 },
     { "qpstep",         required_argument, NULL, 0 },
     { "qpmin",          required_argument, NULL, 0 },

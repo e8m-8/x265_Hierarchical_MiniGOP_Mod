@@ -197,6 +197,7 @@ void x265_param_default(x265_param* param)
     param->bframes = 4;
     param->lookaheadDepth = 20;
     param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
+    param->bFrameBias = 0;
     param->bBPyramid = 1;
     param->scenecutThreshold = 40; /* Magic number pulled in from x264 */
     param->bHistBasedSceneCut = 0;
@@ -304,6 +305,9 @@ void x265_param_default(x265_param* param)
     param->rc.qCompress = 0.6;
     param->rc.ipFactor = 1.4f;
     param->rc.pbFactor = 1.3f;
+    param->rc.bbFactor[0] = 1.2f;
+    param->rc.bbFactor[1] = 1.1f;
+    param->rc.bbFactor[2] = 1.0f;
     param->rc.qpStep = 4;
     param->rc.rateControlMode = X265_RC_CRF;
     param->rc.qp = 32;
@@ -677,6 +681,9 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         {
             param->rc.ipFactor = 1.1;
             param->rc.pbFactor = 1.0;
+            param->rc.bbFactor[0] = 1.0;
+            param->rc.bbFactor[1] = 1.0;
+            param->rc.bbFactor[2] = 1.0;
             param->rc.cuTree = 0;
             param->rc.aqMode = 0;
             param->rc.hevcAq = 0;
@@ -1134,7 +1141,6 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("rd-refine") p->bEnableRdRefine = atobool(value);
     OPT("signhide") p->bEnableSignHiding = atobool(value);
     OPT("b-intra") p->bIntraInBFrames = atobool(value);
-    OPT("lft") p->bEnableLoopFilter = atobool(value); /* DEPRECATED */
     OPT("deblock")
     {
         if (2 == sscanf(value, "%d:%d", &p->deblockingFilterTCOffset, &p->deblockingFilterBetaOffset) ||
@@ -1161,6 +1167,27 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("hrd") p->bEmitHRDSEI = atobool(value);
     OPT2("ipratio", "ip-factor") p->rc.ipFactor = atof(value);
     OPT2("pbratio", "pb-factor") p->rc.pbFactor = atof(value);
+    OPT2("bbratio", "bb-factor")
+    {   
+        if (3 == sscanf(value, "%lf:%lf:%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2]) ||
+            3 == sscanf(value, "%lf,%lf,%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2]))
+        {
+            //
+        }
+        else {
+            if (2 == sscanf(value, "%lf:%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1]) ||
+                2 == sscanf(value, "%lf,%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1]))
+            {
+                //p->rc.bbFactor[2] = p->rc.bbFactor[1];
+            }
+            else
+            {
+                p->rc.bbFactor[0] = atof(value);
+                p->rc.bbFactor[1] = p->rc.bbFactor[0];
+                p->rc.bbFactor[2] = p->rc.bbFactor[0];
+            }
+        }
+    }
     OPT("qcomp") p->rc.qCompress = atof(value);
     OPT("qpstep") p->rc.qpStep = atoi(value);
     OPT("cplxblur") p->rc.complexityBlur = atof(value);
@@ -1223,6 +1250,9 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     {
         p->rc.bStrictCbr = atobool(value);
         p->rc.pbFactor = 1.0;
+        p->rc.bbFactor[0] = 1.0;
+        p->rc.bbFactor[1] = 1.0;
+        p->rc.bbFactor[2] = 1.0;
     }
     OPT("analysis-reuse-mode") p->analysisReuseMode = parseName(value, x265_analysis_names, bError); /*DEPRECATED*/
     OPT("sar")
@@ -1362,6 +1392,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("hdr10") p->bEmitHDR10SEI = atobool(value);
         OPT("hdr-opt") p->bHDR10Opt = atobool(value); /*DEPRECATED*/
         OPT("hdr10-opt") p->bHDR10Opt = atobool(value);
+        OPT("lft") p->bEnableLoopFilter = atobool(value); /* DEPRECATED */
         OPT("limit-sao") p->bLimitSAO = atobool(value);
         OPT("dhdr10-info") snprintf(p->toneMapFile, X265_MAX_STRING_SIZE, "%s", value);
         OPT("dhdr10-opt") p->bDhdr10opt = atobool(value);
@@ -2069,65 +2100,88 @@ void x265_print_params(x265_param* param)
         return;
 
     if (param->interlaceMode)
-        x265_log(param, X265_LOG_INFO, "Interlaced field inputs             : %s\n", x265_interlace_names[param->interlaceMode]);
+        x265_log(param, X265_LOG_INFO, "Interlaced field inputs               : %s\n", x265_interlace_names[param->interlaceMode]);
 
-    x265_log(param, X265_LOG_INFO, "Coding QT: max CU size, min CU size : %d / %d\n", param->maxCUSize, param->minCUSize);
+    x265_log(param, X265_LOG_INFO, "Coding QT: max CU size, min CU size   : %d / %d\n", param->maxCUSize, param->minCUSize);
 
-    x265_log(param, X265_LOG_INFO, "Residual QT: max TU size, max depth : %d / %d inter / %d intra\n",
+    x265_log(param, X265_LOG_INFO, "Residual QT: max TU size, max depth   : %d / %d inter / %d intra\n",
              param->maxTUSize, param->tuQTMaxInterDepth, param->tuQTMaxIntraDepth);
 
     if (param->bEnableHME)
-        x265_log(param, X265_LOG_INFO, "HME L0,1,2 / range / subpel / merge : %s, %s, %s / %d / %d / %d\n",
+        x265_log(param, X265_LOG_INFO, "HME L0,1,2 / range / subpel / merge   : %s, %s, %s / %d / %d / %d\n",
             x265_motion_est_names[param->hmeSearchMethod[0]], x265_motion_est_names[param->hmeSearchMethod[1]], x265_motion_est_names[param->hmeSearchMethod[2]], param->searchRange, param->subpelRefine, param->maxNumMergeCand);
     else
-        x265_log(param, X265_LOG_INFO, "ME / range / subpel / merge         : %s / %d / %d / %d\n",
+        x265_log(param, X265_LOG_INFO, "ME / range / subpel / merge           : %s / %d / %d / %d\n",
             x265_motion_est_names[param->searchMethod], param->searchRange, param->subpelRefine, param->maxNumMergeCand);
 
     if (param->scenecutThreshold && param->keyframeMax != INT_MAX) 
         x265_log(param, X265_LOG_INFO, "Keyframe min / max / scenecut / bias  : %d / %d / %d / %.2lf \n",
                  param->keyframeMin, param->keyframeMax, param->scenecutThreshold, param->scenecutBias * 100);
     else if (param->bHistBasedSceneCut && param->keyframeMax != INT_MAX) 
-        x265_log(param, X265_LOG_INFO, "Keyframe min / max / scenecut  : %d / %d / %d\n",
+        x265_log(param, X265_LOG_INFO, "Keyframe min / max / scenecut         : %d / %d / %d\n",
                  param->keyframeMin, param->keyframeMax, param->bHistBasedSceneCut);
     else if (param->keyframeMax == INT_MAX)
-        x265_log(param, X265_LOG_INFO, "Keyframe min / max / scenecut       : disabled\n");
+        x265_log(param, X265_LOG_INFO, "Keyframe min / max / scenecut         : disabled\n");
 
     if (param->cbQpOffset || param->crQpOffset)
-        x265_log(param, X265_LOG_INFO, "Cb/Cr QP Offset                     : %d / %d\n", param->cbQpOffset, param->crQpOffset);
+        x265_log(param, X265_LOG_INFO, "Cb/Cr QP Offset                       : %d / %d\n", param->cbQpOffset, param->crQpOffset);
 
     if (param->rdPenalty)
-        x265_log(param, X265_LOG_INFO, "Intra 32x32 TU penalty type         : %d\n", param->rdPenalty);
+        x265_log(param, X265_LOG_INFO, "Intra 32x32 TU penalty type           : %d\n", param->rdPenalty);
 
-    x265_log(param, X265_LOG_INFO, "Lookahead / bframes / badapt        : %d / %d / %d\n", param->lookaheadDepth, param->bframes, param->bFrameAdaptive);
-    x265_log(param, X265_LOG_INFO, "b-pyramid / weightp / weightb       : %d / %d / %d\n",
+    if (param->bEnableTemporalSubLayers)
+        x265_log(param, X265_LOG_INFO, "Temporal-Sub-Layer                    : %d\n", param->bEnableTemporalSubLayers);
+
+    if (param->bFrameAdaptive)
+        x265_log(param, X265_LOG_INFO, "Lookahead / bframes / badapt / bias   : %d / %d / %d / %d\n", param->lookaheadDepth, param->bframes, param->bFrameAdaptive, param->bFrameBias);
+    else
+        x265_log(param, X265_LOG_INFO, "Lookahead / bframes / badapt          : %d / %d / %d\n", param->lookaheadDepth, param->bframes, param->bFrameAdaptive);
+
+    x265_log(param, X265_LOG_INFO, "b-pyramid / weightp / weightb         : %d / %d / %d\n",
              param->bBPyramid, param->bEnableWeightedPred, param->bEnableWeightedBiPred);
-    x265_log(param, X265_LOG_INFO, "References / ref-limit  cu / depth  : %d / %s / %s\n",
+    x265_log(param, X265_LOG_INFO, "References / ref-limit  cu / depth    : %d / %s / %s\n",
              param->maxNumReferences, (param->limitReferences & X265_REF_LIMIT_CU) ? "on" : "off",
              (param->limitReferences & X265_REF_LIMIT_DEPTH) ? "on" : "off");
 
     if (param->rc.aqMode)
-        x265_log(param, X265_LOG_INFO, "AQ: mode / str / qg-size / cu-tree  : %d / %0.1f / %d / %d\n", param->rc.aqMode,
+        x265_log(param, X265_LOG_INFO, "AQ: mode / str / qg-size / cu-tree    : %d / %0.1f / %d / %d\n", param->rc.aqMode,
                  param->rc.aqStrength, param->rc.qgSize, param->rc.cuTree);
 
     if (param->bLossless)
-        x265_log(param, X265_LOG_INFO, "Rate Control                        : Lossless\n");
-    else switch (param->rc.rateControlMode)
+        x265_log(param, X265_LOG_INFO, "Rate Control                          : Lossless\n");
+    else
     {
-    case X265_RC_ABR:
-        x265_log(param, X265_LOG_INFO, "Rate Control / qCompress            : ABR-%d kbps / %0.2f\n", param->rc.bitrate, param->rc.qCompress); break;
-    case X265_RC_CQP:
-        x265_log(param, X265_LOG_INFO, "Rate Control                        : CQP-%d\n", param->rc.qp); break;
-    case X265_RC_CRF:
-        x265_log(param, X265_LOG_INFO, "Rate Control / qCompress            : CRF-%0.1f / %0.2f\n", param->rc.rfConstant, param->rc.qCompress); break;
+        switch (param->rc.rateControlMode)
+        {
+        case X265_RC_ABR:
+            x265_log(param, X265_LOG_INFO, "Rate Control / qCompress              : ABR-%d kbps / %0.2f\n", param->rc.bitrate, param->rc.qCompress); break;
+        case X265_RC_CQP:
+            x265_log(param, X265_LOG_INFO, "Rate Control                          : CQP-%d\n", param->rc.qp); break;
+        case X265_RC_CRF:
+            x265_log(param, X265_LOG_INFO, "Rate Control / qCompress              : CRF-%0.1f / %0.2f\n", param->rc.rfConstant, param->rc.qCompress); break;
+        }
+        switch (param->bEnableTemporalSubLayers)
+        {
+        case 0:
+        case 1:
+        case 2:
+            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio                   : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor); break;
+        case 3:
+            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0]); break;
+        case 4:
+            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1]); break;
+        case 5:
+            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2]); break;
+        }
     }
 
     if (param->rc.vbvBufferSize)
     {
         if (param->vbvBufferEnd)
-            x265_log(param, X265_LOG_INFO, "VBV/HRD buffer / max-rate / init / end / fr-adj: %d / %d / %.3f / %.3f / %.3f\n",
+            x265_log(param, X265_LOG_INFO, "VBV/HRD buffer / max-rate / init      : %d / %d / %.3f\n                    / end / fr-adj    : %.3f / %.3f\n",
             param->rc.vbvBufferSize, param->rc.vbvMaxBitrate, param->rc.vbvBufferInit, param->vbvBufferEnd, param->vbvEndFrameAdjust);
         else
-            x265_log(param, X265_LOG_INFO, "VBV/HRD buffer / max-rate / init    : %d / %d / %.3f\n",
+            x265_log(param, X265_LOG_INFO, "VBV/HRD buffer / max-rate / init      : %d / %d / %.3f\n",
             param->rc.vbvBufferSize, param->rc.vbvMaxBitrate, param->rc.vbvBufferInit);
     }
     
@@ -2365,7 +2419,21 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     {
         s += snprintf(s, bufSize - (s - buf), " ipratio=%.2f", p->rc.ipFactor);
         if (p->bframes)
+        {
             s += snprintf(s, bufSize - (s - buf), " pbratio=%.2f", p->rc.pbFactor);
+            if (p->bEnableTemporalSubLayers > 2)
+            {
+                s += snprintf(s, bufSize - (s - buf), " bbratio=%.2f", p->rc.bbFactor[0]);
+                if (p->bEnableTemporalSubLayers > 3)
+                {
+                    s += snprintf(s, bufSize - (s - buf), ":%.2f", p->rc.bbFactor[1]);
+                    if (p->bEnableTemporalSubLayers > 4)
+                    {
+                        s += snprintf(s, bufSize - (s - buf), ":%.2f", p->rc.bbFactor[2]);
+                    }
+                }
+            }
+        }
     }
     s += snprintf(s, bufSize - (s - buf), " aq-mode=%d", p->rc.aqMode);
     s += snprintf(s, bufSize - (s - buf), " aq-strength=%.2f", p->rc.aqStrength);
@@ -2818,6 +2886,9 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->rc.qCompress = src->rc.qCompress;
     dst->rc.ipFactor = src->rc.ipFactor;
     dst->rc.pbFactor = src->rc.pbFactor;
+    dst->rc.bbFactor[0] = src->rc.bbFactor[0];
+    dst->rc.bbFactor[1] = src->rc.bbFactor[1];
+    dst->rc.bbFactor[2] = src->rc.bbFactor[2];
     dst->rc.rfConstant = src->rc.rfConstant;
     dst->rc.qpStep = src->rc.qpStep;
     dst->rc.aqMode = src->rc.aqMode;

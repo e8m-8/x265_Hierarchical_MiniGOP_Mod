@@ -2310,7 +2310,9 @@ void Lookahead::slicetypeDecide()
                 list[newbFrames]->m_reorderedPts = pts[idx++];
                 list[newbFrames]->m_gopOffset = 0;
                 list[newbFrames]->m_gopId = gopId;
+                list[newbFrames]->m_qpLayer = x265_gop_ra[gopId][0].layer;
                 list[newbFrames]->m_tempLayer = x265_gop_ra[gopId][0].layer;
+
                 m_outputQueue.pushBack(*list[newbFrames]);
 
                 /* add B frames to output queue */
@@ -2324,6 +2326,7 @@ void Lookahead::slicetypeDecide()
                     // Assign gop offset and temporal layer of frames
                     list[offset]->m_gopOffset = j;
                     list[offset]->m_gopId = gopId;
+                    list[offset]->m_qpLayer = x265_gop_ra[gopId][j].layer;
                     list[offset]->m_tempLayer = x265_gop_ra[gopId][j++].layer;
 
                     list[offset]->m_reorderedPts = pts[idx++];
@@ -2385,6 +2388,7 @@ void Lookahead::slicetypeDecide()
                 list[newbFrames]->m_reorderedPts = pts;
                 list[newbFrames]->m_gopOffset = 0;
                 list[newbFrames]->m_gopId = -1;
+                list[newbFrames]->m_qpLayer = 0;
                 list[newbFrames]->m_tempLayer = 0;
                 m_outputQueue.pushBack(*list[newbFrames]);
             }
@@ -2445,6 +2449,7 @@ void Lookahead::slicetypeDecide()
             list[bframes]->m_reorderedPts = pts[idx++];
             list[bframes]->m_gopOffset = 0;
             list[bframes]->m_gopId = m_gopId;
+            list[bframes]->m_qpLayer = x265_gop_ra[m_gopId][0].layer;
             list[bframes]->m_tempLayer = x265_gop_ra[m_gopId][0].layer;
             m_outputQueue.pushBack(*list[bframes]);
 
@@ -2458,6 +2463,7 @@ void Lookahead::slicetypeDecide()
                 // Assign gop offset and temporal layer of frames
                 list[offset]->m_gopOffset = j;
                 list[offset]->m_gopId = m_gopId;
+                list[offset]->m_qpLayer = x265_gop_ra[m_gopId][j].layer;
                 list[offset]->m_tempLayer = x265_gop_ra[m_gopId][j++].layer;
 
                 /* add B frames to output queue */

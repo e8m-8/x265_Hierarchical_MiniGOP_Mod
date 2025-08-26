@@ -1763,10 +1763,12 @@ typedef struct x265_param
          * Default value is 0.6. Increasing it to 1 will effectively generate CQP */
         double    qCompress;
 
-        /* QP offset between I/P and P/B frames. Default ipfactor: 1.4
-         * Default pbFactor: 1.3 */
+        /* QP offset between I/P frames. Default ipfactor: 1.4 */
         double    ipFactor;
+        /* QP offset between P/B frames. Default ipfactor: 1.3 */
         double    pbFactor;
+        /* QP offset between Layer-2 / Layer-3 / Layer-4 frames. Default ipfactor: 1.2:1.1:1.0 */
+        double    bbFactor[3];
 
         /* Ratefactor constant: targets a certain constant "quality".
          * Acceptable values between 0 and 51. Default value: 28 */

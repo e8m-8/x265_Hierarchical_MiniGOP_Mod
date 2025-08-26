@@ -220,7 +220,7 @@ namespace X265_NS {
         H0("   --[no-]-hrd-concat            Set HRD concatenation flag for the first keyframe in the buffering period SEI. Default %s\n", OPT(param->bEnableHRDConcatFlag));
         H0("\nRate control, Adaptive Quantization:\n");
         H0("   --bitrate <integer>           Target bitrate (kbps) for ABR (implied). Default %d\n", param->rc.bitrate);
-        H1("-q/--qp <integer>                QP for P slices in CQP mode (implied). --ipratio and --pbration determine other slice QPs\n");
+        H1("-q/--qp <integer>                QP for P slices in CQP mode (implied). --ipratio, --pbratio and --bbratio determine other slice QPs\n");
         H0("   --crf <float>                 Quality-based VBR (0-51). Default %.1f\n", param->rc.rfConstant);
         H1("   --[no-]lossless               Enable lossless: bypass transform, quant and loop filters globally. Default %s\n", OPT(param->bLossless));
         H1("   --crf-max <float>             With CRF+VBV, limit RF to this value. Default %f\n", param->rc.rfConstantMax);
@@ -292,6 +292,11 @@ namespace X265_NS {
         H0("   --[no-]rc-grain               Enable rate-control mode to handle grains specifically. Turned on with tune grain. Default %s\n", OPT(param->rc.bEnableGrain));
         H1("   --ipratio <float>             QP factor between I and P. Default %.2f\n", param->rc.ipFactor);
         H1("   --pbratio <float>             QP factor between P and B. Default %.2f\n", param->rc.pbFactor);
+        H1("   --bbratio <float>             QP factor for Hierarchical B-Slices, between upper layer B and lower layer B. Default %.2f\n"
+            "                                   Use ':' to separate the independent QP factor for each layer.\n"
+            "                                   For example: %.2f:%.2f      (--temporal-layers = 4 default),\n"
+            "                                                %.2f:%.2f:%.2f (--temporal-layers = 5 default).\n"
+            "                                                1.10 means 1.10:1.10:1.10 when --temporal-layers = 5.\n", param->rc.bbFactor[0], param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2]);
         H1("   --qcomp <float>               Weight given to predicted complexity. Default %.2f\n", param->rc.qCompress);
         H1("   --qpstep <integer>            The maximum single adjustment in QP allowed to rate control. Default %d\n", param->rc.qpStep);
         H1("   --qpmin <integer>             sets a hard lower limit on QP allowed to ratecontrol. Default %d\n", param->rc.qpMin);
