@@ -220,10 +220,10 @@ void determineLevel(const x265_param &param, VPS& vps)
         }
 
         /* The value of NumPocTotalCurr shall be less than or equal to 8 */
-        int numPocTotalCurr = param.maxNumReferences + vps.numReorderPics[vps.maxTempSubLayers - 1];
+        int numPocTotalCurr = param.maxNumReferences + (!!param.bRefSublayer ? vps.numReorderPics[vps.maxTempSubLayers - 3] : vps.numReorderPics[vps.maxTempSubLayers - 1]);
         if (numPocTotalCurr > 10)
         {
-            x265_log(&param, X265_LOG_WARNING, "level %s detected, but NumPocTotalCurr (total references) is non-compliant\n", levels[i].name);
+            x265_log(&param, X265_LOG_WARNING, "level %s detected, but NumPocTotalCurr %d (total references) is non-compliant\n", levels[i].name, numPocTotalCurr);
             vps.ptl.profileIdc[0] = Profile::NONE;
             vps.ptl.levelIdc = Level::NONE;
             vps.ptl.tierFlag = Level::MAIN;
@@ -497,11 +497,11 @@ bool enforceLevel(x265_param& param, VPS& vps)
     }
 
     /* The value of NumPocTotalCurr shall be less than or equal to 8 */
-    int numPocTotalCurr = param.maxNumReferences + !!param.bframes;
+    int numPocTotalCurr = param.maxNumReferences + ( !!param.bRefSublayer ?  0 : !!param.bframes );
     if (numPocTotalCurr > 8)
     {
-        param.maxNumReferences = 8 - !!param.bframes;
-        x265_log(&param, X265_LOG_WARNING, "Lowering max references to %d to meet numPocTotalCurr requirement\n", param.maxNumReferences);
+        param.maxNumReferences = 8 - (!!param.bRefSublayer ? 0 : !!param.bframes);
+        x265_log(&param, X265_LOG_WARNING, "numPocTotalCurr %d, Lowering max references to %d to meet numPocTotalCurr requirement\n", numPocTotalCurr, param.maxNumReferences);
     }
 
     return true;

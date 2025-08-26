@@ -4193,6 +4193,29 @@ void Encoder::configure(x265_param *p)
         }
     }
 	
+    if (p->bRefSublayer)
+    {
+        if (p->bEnableTemporalSubLayers < 4)
+        {
+            p->bRefSublayer = 0;
+            x265_log(p, X265_LOG_WARNING, "When using temporal sub-layers < 4, --bref-on-sub-layer can't be enabled! Changed to disabled.\n");
+        }
+        else
+        {
+            if (p->maxNumReferences < 7 && p->bEnableTemporalSubLayers == 4)
+			{
+				p->maxNumReferences = 7;
+				x265_log(p, X265_LOG_WARNING, "When enable --bref-on-sub-layer, --ref must higher than 7 for MiniGOP8! Changed to %d.\n", p->maxNumReferences);
+			}
+            if (p->maxNumReferences != 8 && p->bEnableTemporalSubLayers == 5)
+            {
+                p->maxNumReferences = 8;
+                x265_log(p, X265_LOG_WARNING, "When enable --bref-on-sub-layer, --ref must be 8 for MiniGOP16! Changed to %d.\n", p->maxNumReferences);
+            }
+            x265_log(p, X265_LOG_INFO, "--bref-on-sub-layer will push B-Ref to Base Temporal Sub-Layer to keep keyframe distance of 4.\n");
+        }
+    }
+
     m_bframeDelay = p->bframes ? (p->bBPyramid ? 2 : 1) : 0;
 
     if (p->bFrameAdaptive)

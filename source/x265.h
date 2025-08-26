@@ -1359,6 +1359,11 @@ typedef struct x265_param
      * sequence. */
     int       bEnableTemporalSubLayers;
 
+    /* Enable the B-Ref on Base Temporal Sub Layers, and compress higher layer to layer 2.
+     * it needs higher maximum number of L0 references.
+     * Improves compression efficiency, but suitable for low CRF encoding. */
+    int       bRefSublayer;
+
     /*== GOP structure and slice type decisions (lookahead) ==*/
 
     /* Enable open GOP - meaning I slices are not necessarily IDR and thus frames

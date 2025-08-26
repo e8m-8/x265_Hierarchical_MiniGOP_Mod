@@ -379,6 +379,7 @@ void x265_param_default(x265_param* param)
     param->bOptRefListLengthPPS = 0;
     param->bOptCUDeltaQP        = 0;
     param->bAQMotion = 0;
+    param->bRefSublayer = 0;
     param->bHDROpt = 0; /*DEPRECATED*/
     param->bHDR10Opt = 0;
     param->analysisReuseLevel = 0;  /*DEPRECATED*/
@@ -1441,6 +1442,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("multi-pass-opt-analysis") p->analysisMultiPassRefine = atobool(value);
         OPT("multi-pass-opt-distortion") p->analysisMultiPassDistortion = atobool(value);
         OPT("aq-motion") p->bAQMotion = atobool(value);
+        OPT("bref-on-base-layer") p->bRefSublayer = atobool(value);
         OPT("dynamic-rd") p->dynamicRd = atof(value);
 		OPT("cra-nal") p->craNal = atobool(value);
         OPT("analysis-reuse-level")
@@ -2565,6 +2567,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += snprintf(s, bufSize - (s - buf), " scenecut-bias=%.2f", p->scenecutBias);
     BOOL(p->bOptCUDeltaQP, "opt-cu-delta-qp");
     BOOL(p->bAQMotion, "aq-motion");
+    BOOL(p->bRefSublayer, "bref-on-base-layer");
     BOOL(p->bEmitHDR10SEI, "hdr10");
     BOOL(p->bHDR10Opt, "hdr10-opt");
     BOOL(p->bDhdr10opt, "dhdr10-opt");
@@ -3067,6 +3070,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->analysisMultiPassDistortion = src->analysisMultiPassDistortion;
     dst->analysisMultiPassRefine = src->analysisMultiPassRefine;
     dst->bAQMotion = src->bAQMotion;
+    dst->bRefSublayer = src->bRefSublayer;
     dst->bSsimRd = src->bSsimRd;
     dst->dynamicRd = src->dynamicRd;
     dst->bEmitHDR10SEI = src->bEmitHDR10SEI;
