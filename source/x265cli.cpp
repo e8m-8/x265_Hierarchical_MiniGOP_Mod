@@ -197,9 +197,17 @@ namespace X265_NS {
         H0("   --rc-lookahead <integer>      Number of frames for frame-type lookahead (determines encoder latency) Default %d\n", param->lookaheadDepth);
         H1("   --lookahead-slices <0..16>    Number of slices to use per lookahead cost estimate. Default %d\n", param->lookaheadSlices);
         H0("   --lookahead-threads <integer> Number of threads to be dedicated to perform lookahead only. Default %d\n", param->lookaheadThreads);
-        H0("-b/--bframes <0..16>             Maximum number of consecutive b-frames. Default %d\n", param->bframes);
-        H1("   --bframe-bias <integer>       Bias towards B frame decisions. Default %d\n", param->bFrameBias);
-        H0("   --b-adapt <0..2>              0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling. Default %d\n", param->bFrameAdaptive);
+        H0("-b/--bframes <0..16>             Maximum number of consecutive b-frames. Default %d\n"
+           "                                    When --temporal-layers > 2, it will be set to specific values.\n", param->bframes);
+        H1("   --bframe-bias <integer>       Bias towards B frame decisions.\n"
+			"                                   When --temporal-layers < 4 : [-90, 100]\n"
+			"                                   When --temporal-layers > 3 : [100, 500]\n"
+			"                                   Default %d (--temporal-layers < 4) or 100 (--temporal-layers > 3)\n", param->bFrameBias);
+        H0("   --b-adapt <0..2>              Adaptive B frame scheduling. Default %d\n"
+			"                                   When --temporal-layers > 2, mode 1 is not applicable.\n"
+			"                                   - 0 : none, the GOP structure is fixed based on the values of --keyint and --bframes.\n"
+			"                                   - 1 : fast, light lookahead is used to choose B frame placement.\n"
+			"                                   - 2 : full (trellis), a viterbi B path selection is performed.\n", param->bFrameAdaptive);
         H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
         H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
         H1("                                 Format of each line: framenumber frametype QP\n");
@@ -253,20 +261,20 @@ namespace X265_NS {
             "                                    - 2 : Functionality of (1) + irrespective of size evaluates all angular modes when the save encode decides the best mode as angular.\n"
             "                                    - 3 : Functionality of (1) + irrespective of size evaluates all intra modes.\n"
             "                                    - 4 : Re-evaluate all intra blocks, does not reuse data from save encode.\n"
-            "                                Default:%d\n", param->intraRefine);
+            "                                 Default:%d\n", param->intraRefine);
         H0("   --refine-inter <0..3>         Enable inter refinement for encode that uses analysis-load.\n"
             "                                    - 0 : Forces both mode and depth from the save encode.\n"
             "                                    - 1 : Functionality of (0) + evaluate all inter modes at min-cu-size's depth when current depth is one smaller than\n"
             "                                          min-cu-size's depth. When save encode decides the current block as skip(for all sizes) evaluate skip/merge.\n"
             "                                    - 2 : Functionality of (1) + irrespective of size restricts the modes evaluated when specific modes are decided as the best mode by the save encode.\n"
             "                                    - 3 : Functionality of (1) + irrespective of size evaluates all inter modes.\n"
-            "                                Default:%d\n", param->interRefine);
+            "                                 Default:%d\n", param->interRefine);
         H0("   --[no-]dynamic-refine         Dynamically changes refine-inter level for each CU. Default %s\n", OPT(param->bDynamicRefine));
         H0("   --refine-mv <1..3>            Enable mv refinement for load mode. Default %d\n", param->mvRefine);
         H0("   --refine-ctu-distortion       Store/normalize ctu distortion in analysis-save/load.\n"
             "                                    - 0 : Disabled.\n"
             "                                    - 1 : Store/Load ctu distortion to/from the file specified in analysis-save/load.\n"
-            "                                Default 0 - Disabled\n");
+            "                                 Default 0 - Disabled\n");
         H0("   --aq-mode <integer>           Mode for Adaptive Quantization\n"
            "                                   - 0:none\n"
            "                                   - 1:uniform AQ\n"
@@ -367,7 +375,17 @@ namespace X265_NS {
         H0("   --[no-]info                   Emit SEI identifying encoder and parameters. Default %s\n", OPT(param->bEmitInfoSEI));
         H0("   --[no-]hrd                    Enable HRD parameters signaling. Default %s\n", OPT(param->bEmitHRDSEI));
         H0("   --[no-]idr-recovery-sei       Emit recovery point infor SEI at each IDR frame \n");
-        H0("   --temporal-layers             Enable a temporal sublayer for unreferenced B frames. Default %s\n", OPT(param->bEnableTemporalSubLayers));
+        H0("   --temporal-layers             Enable by specifying number of [2, 5]. Default %s\n"
+            "                                   - 2 : all reference frames in the base layer and non-reference frames in the enhancement layer,\n"
+            "                                         without any constraint on the number of B-frames.\n"
+            "                                   - 3 : 3-frame Hierarchical B-frame implementation.\n"
+            "                                         1P - 1B - 2b miniGOP structure, with 3 temporal layers.\n"
+            "                                   - 4 : 7-frame Hierarchical B-frame implementation.\n"
+            "                                         1P - 1B - 2B - 4b miniGOP structure, with 4 temporal layers.\n"
+            "                                   - 5 : 15-frame Hierarchical B-frame implementation.\n"
+            "                                         1P - 1B - 2B - 4B - 8b miniGOP structure, with 5 temporal layers.\n"
+            "                                  miniGOP size could be modified due to lookahead decisions.\n"
+            "                                  temporal layers could be reduced due to viterbi B path selection when --b-adapt = 2.\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]aud                    Emit access unit delimiters at the start of each access unit. Default %s\n", OPT(param->bEnableAccessUnitDelimiters));
         H0("   --[no-]eob                    Emit end of bitstream nal unit at the end of the bitstream. Default %s\n", OPT(param->bEnableEndOfBitstream));
         H0("   --[no-]eos                    Emit end of sequence nal unit at the end of every coded video sequence. Default %s\n", OPT(param->bEnableEndOfSequence));
@@ -434,8 +452,8 @@ namespace X265_NS {
         H0("\nSEI Message Options\n");
         H0("   --film-grain <filename>       File containing Film Grain Characteristics to be written as a SEI Message\n");
         H0("   --aom-film-grain <filename>   File containing Aom Film Grain Characteristics to be written as a SEI Message\n");
-        H0("   --[no-]frame-rc              Enable configuring Rate Control parameters(QP, CRF or Bitrate) at frame level.Default 0\n"
-           "                                Enable this option only when planning to invoke the API function x265_encoder_reconfig to configure Rate Control parameters\n");
+        H0("   --[no-]frame-rc               Enable configuring Rate Control parameters(QP, CRF or Bitrate) at frame level. Default 0\n"
+           "                                 Enable this option only when planning to invoke the API function x265_encoder_reconfig to configure Rate Control parameters\n");
 #undef OPT
 #undef H0
 #undef H1
