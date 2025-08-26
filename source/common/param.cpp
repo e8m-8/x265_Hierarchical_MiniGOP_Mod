@@ -703,6 +703,79 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->deblockingFilterBetaOffset = 1;
             param->deblockingFilterTCOffset = 1;
         }
+        else if (!strcmp(tune, "minigop8"))
+        {
+            param->bframes = 7;
+            param->bEnableTemporalSubLayers = 4;
+            param->bFrameAdaptive = 0;
+            param->keyframeMax = X265_MAX(param->keyframeMax, 32);
+            if (param->scenecutThreshold == 0)
+                param->scenecutThreshold = 40;
+            param->bBPyramid = 1;
+            param->bIntraInBFrames = 1;
+            param->bEnableWeightedPred = 1;
+            param->bEnableWeightedBiPred = 1;
+            param->rc.ipFactor = 1.6f;
+            param->rc.pbFactor = 1.4f;
+            param->rc.bbFactor[0] = 1.2f;
+            param->rc.bbFactor[1] = 1.0f;
+            if (param->rdLevel > 2)
+                param->bEnableTransformSkip = 1;
+            if (param->rdLevel > 4)
+                param->bEnableRdRefine = 1;
+            param->lookaheadDepth = X265_MAX(param->lookaheadDepth, 16);
+            param->maxNumReferences = X265_MIN(param->maxNumReferences, 6);
+            if (param->limitReferences > 0 && param->maxNumReferences > 3)
+                param->limitReferences = 0;
+        }
+        else if (!strcmp(tune, "minigop16"))
+        {
+            param->bframes = 15;
+            param->bEnableTemporalSubLayers = 5;
+            param->bFrameAdaptive = 0;
+            param->keyframeMax = X265_MAX(param->keyframeMax, 64);
+            if (param->scenecutThreshold == 0)
+                param->scenecutThreshold = 40;
+            param->bBPyramid = 1;
+            param->bIntraInBFrames = 1;
+            param->bEnableWeightedPred = 1;
+            param->bEnableWeightedBiPred = 1;
+            param->rc.ipFactor = 1.8f;
+            param->rc.pbFactor = 1.6f;
+            param->rc.bbFactor[0] = 1.4f;
+            param->rc.bbFactor[1] = 1.2f;
+            param->rc.bbFactor[2] = 1.0f;
+            if (param->rdLevel > 2)
+                param->bEnableTransformSkip = 1;
+            if (param->rdLevel > 4)
+                param->bEnableRdRefine = 1;
+            param->lookaheadDepth = X265_MAX(param->lookaheadDepth, 32);
+            param->maxNumReferences = X265_MIN(param->maxNumReferences + 1, 6);
+            if (param->limitReferences > 0 && param->maxNumReferences > 4)
+                param->limitReferences = 0;
+        }
+        else if (!strcmp(tune, "adaptminigop") || !strcmp(tune, "adapt-minigop"))
+        {
+            param->bframes = 15;
+            param->bEnableTemporalSubLayers = 5;
+            param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
+            param->bFrameBias = 250;
+            if (param->scenecutThreshold == 0)
+                param->scenecutThreshold = 40;
+            param->keyframeMax = X265_MAX(param->keyframeMax, 64);
+            param->bBPyramid = 1;
+            param->bIntraInBFrames = 1;
+            param->bEnableWeightedPred = 1;
+            param->bEnableWeightedBiPred = 1;
+            if (param->rdLevel > 2)
+                param->bEnableTransformSkip = 1;
+            if (param->rdLevel > 4)
+                param->bEnableRdRefine = 1;
+            param->lookaheadDepth = X265_MAX(param->lookaheadDepth, 32);
+            param->maxNumReferences = X265_MIN(param->maxNumReferences + 1, 6);
+            if (param->limitReferences > 0 && param->maxNumReferences > 4)
+                param->limitReferences = 0;
+        }
         else if (!strcmp(tune, "vmaf"))  /*Adding vmaf for x265 + SVT-HEVC integration support*/
         {
             /*vmaf is under development, currently x265 won't support vmaf*/
