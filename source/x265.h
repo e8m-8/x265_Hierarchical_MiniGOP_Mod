@@ -813,7 +813,7 @@ static const x265_vmaf_commondata vcd[] = { { NULL, (char *)"/usr/local/share/mo
 typedef struct x265_temporal_layer {
     int poc_offset;      /* POC offset */
     int8_t layer;        /* Current layer */
-    int8_t isNonRefB;    /* is Non-Ref B */
+    int8_t isNonBase;    /* is Non-Base */
 } x265_temporal_layer;
 
 static const int8_t x265_temporal_layer_bframes[MAX_T_LAYERS] = {-1, -1, 3, 7, 15, -1, -1};
