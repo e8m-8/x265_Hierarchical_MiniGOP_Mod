@@ -396,7 +396,7 @@ namespace X265_NS {
             "                                  miniGOP size could be modified due to lookahead decisions.\n"
             "                                  temporal layers could be reduced due to viterbi B path selection when --b-adapt = 2.\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]bref-on-base-layer     Using B-ref Frame in Base Temporal Sub Layer and Compressing higher layers to layer 2.\n"
-            "                                   When enable, it limit the keyframe distance at 4.\n", OPT(param->bRefSublayer));
+            "                                   When enable, it limit the keyframe distance at 4.\n");
         H0("   --[no-]aud                    Emit access unit delimiters at the start of each access unit. Default %s\n", OPT(param->bEnableAccessUnitDelimiters));
         H0("   --[no-]eob                    Emit end of bitstream nal unit at the end of the bitstream. Default %s\n", OPT(param->bEnableEndOfBitstream));
         H0("   --[no-]eos                    Emit end of sequence nal unit at the end of every coded video sequence. Default %s\n", OPT(param->bEnableEndOfSequence));
