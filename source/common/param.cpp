@@ -678,6 +678,20 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->rc.cuTree = 0;
             param->frameNumThreads = 1;
         }
+        else if (!strcmp(tune, "fastdecodelowdelay") ||
+            !strcmp(tune, "fastdecode-lowdelay"))
+        {
+            param->bFrameAdaptive = 0;
+            param->bframes = 0;
+            param->lookaheadDepth = 1;
+            param->scenecutThreshold = 40;
+            param->rc.cuTree = 0;
+            param->bEnableLoopFilter = 0;
+            param->bEnableSAO = 0;
+            param->bEnableWeightedPred = 0;
+            param->bEnableWeightedBiPred = 0;
+            param->bIntraInBFrames = 0;
+        }
         else if (!strcmp(tune, "grain"))
         {
             param->rc.ipFactor = 1.1;

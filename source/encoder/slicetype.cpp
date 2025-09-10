@@ -3067,7 +3067,7 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
 bool Lookahead::scenecut(Lowres **frames, int p0, int p1, bool bRealScenecut, int numFrames)
 {
     /* Only do analysis during a normal scenecut check. */
-    if (bRealScenecut && m_param->bframes)
+    if (bRealScenecut && (m_param->bframes || m_param->scenecutThreshold) )
     {
         int origmaxp1 = p0 + 1;
         /* Look ahead to avoid coding short flashes as scenecuts. */
@@ -3336,7 +3336,7 @@ bool Lookahead::detectHistBasedSceneChange(Lowres **frames, int p0, int p1, int 
 bool Lookahead::histBasedScenecut(Lowres **frames, int p0, int p1, int numFrames)
 {
     /* Only do analysis during a normal scenecut check. */
-    if (m_param->bframes)
+    if (m_param->bframes || m_param->scenecutThreshold)
     {
         int origmaxp1 = p0 + 1;
         /* Look ahead to avoid coding short flashes as scenecuts. */
