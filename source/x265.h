@@ -636,6 +636,7 @@ typedef enum
 #define FORWARD_WINDOW          2 /* Scenecut window after a scenecut */
 #define BWD_WINDOW_DELTA        0.4
 
+#define X265_BASE_GOP_CONFIG 5
 #define X265_MAX_GOP_CONFIG 15
 #define X265_MAX_GOP_LENGTH 16
 #define MAX_T_LAYERS 7
@@ -817,7 +818,7 @@ typedef struct x265_temporal_layer {
 } x265_temporal_layer;
 
 static const int8_t x265_temporal_layer_bframes[MAX_T_LAYERS] = {-1, -1, 3, 7, 15, -1, -1};
-static const int8_t x265_base_gop_ra_length[5] = {2, 3, 4, 8, 16};
+static const int8_t x265_base_gop_ra_length[X265_BASE_GOP_CONFIG] = {2, 3, 4, 8, 16};
 static const int8_t x265_gop_ra_length[X265_MAX_GOP_CONFIG] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
 static const x265_temporal_layer x265_gop_ra[X265_MAX_GOP_CONFIG][X265_MAX_GOP_LENGTH] = {
     {
