@@ -4158,8 +4158,8 @@ void Encoder::configure(x265_param *p)
         if (p->bframes != x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1] )
         {
             x265_log(p, X265_LOG_WARNING, "The maximum B-frame must be %d match the temporal layer structure of the current MiniGOP %d.\n", x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1], x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1] + 1);
+            p->bframes = x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1];
         }
-        p->bframes = x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1];
     }
 
     if (p->bEnableTemporalSubLayers > 2)
@@ -4175,7 +4175,15 @@ void Encoder::configure(x265_param *p)
             if (p->lookaheadDepth < ((1 << (p->bEnableTemporalSubLayers)) + 4))
             {
                 p->lookaheadDepth = (1 << (p->bEnableTemporalSubLayers)) + 4;
-                x265_log(p, X265_LOG_WARNING, "For maximum. %d temporal sub-layers, --rc-lookahead must higher than %d! Changed to %d.\n", p->bEnableTemporalSubLayers, p->lookaheadDepth, p->lookaheadDepth);
+                x265_log(p, X265_LOG_WARNING, "For Adaptive maximum. %d temporal sub-layers, --rc-lookahead must higher than %d! Changed to %d.\n", p->bEnableTemporalSubLayers, p->lookaheadDepth, p->lookaheadDepth);
+            }
+        }
+        else
+        {
+            if (p->lookaheadDepth < x265_base_gop_ra_length[p->bEnableTemporalSubLayers - 1])
+            {
+                p->lookaheadDepth = x265_base_gop_ra_length[p->bEnableTemporalSubLayers - 1];
+                x265_log(p, X265_LOG_WARNING, "For %d temporal sub-layers, --rc-lookahead must higher than %d! Changed to %d.\n", p->bEnableTemporalSubLayers, p->lookaheadDepth, p->lookaheadDepth);
             }
         }
     }
