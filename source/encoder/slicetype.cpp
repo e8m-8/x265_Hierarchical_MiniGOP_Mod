@@ -2288,7 +2288,46 @@ void Lookahead::slicetypeDecide()
                     estGroup.singleCost(p0, p1, b);
 
                     if (newbFrames)
-                        compCostBref(frames, listReset, newbFrames, newbFrames + 1);
+                    {
+                        sub_leftOver = leftOver;
+                        sub_listReset = listReset;
+                        switch (m_gopId)
+                        {
+                        case 2:
+                            sub_gopId = 1; break;
+                        case 6:
+                            sub_gopId = 2; break;
+                        case 14:
+                            sub_gopId = 3; break;
+                        default:
+                            break;
+                        }
+                        sub_gopLen = x265_base_gop_ra_length[sub_gopId];
+
+                        while ((sub_gopId >= 0) && (sub_leftOver > 1))
+                        {
+                            if (sub_leftOver < sub_gopLen)
+                            {
+                                sub_gopId = sub_gopId - 1;
+                                sub_gopLen = x265_base_gop_ra_length[sub_gopId];
+                                continue;
+                            }
+                            else
+                            {
+                                int sub_newbFrames = sub_listReset + sub_gopLen - 1;
+                                if (sub_newbFrames < newbFrames)
+                                    estGroup.singleCost(sub_listReset, newbFrames + 1, sub_newbFrames + 1);
+
+                                if (sub_newbFrames)
+                                    compCostBref(frames, sub_listReset, sub_newbFrames, sub_gopLen);
+
+                                sub_listReset += sub_gopLen;
+                                sub_leftOver = sub_leftOver - sub_gopLen;
+                                sub_gopId -= 1;
+                                sub_gopLen = (sub_gopId >= 0) ? x265_base_gop_ra_length[sub_gopId] : 0;
+                            }
+                        }
+                    }
                 }
 
                 m_inputLock.acquire();
