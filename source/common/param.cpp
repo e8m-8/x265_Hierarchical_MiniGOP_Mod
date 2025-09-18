@@ -774,7 +774,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bframes = 15;
             param->bEnableTemporalSubLayers = 5;
             param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
-            param->bFrameBias = 250;
+            param->bFrameBias = 200;
             if (param->scenecutThreshold == 0)
                 param->scenecutThreshold = 40;
             param->keyframeMax = X265_MAX(param->keyframeMax, 64);
@@ -782,11 +782,16 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bIntraInBFrames = 1;
             param->bEnableWeightedPred = 1;
             param->bEnableWeightedBiPred = 1;
+            param->rc.ipFactor = 1.5f;
+            param->rc.pbFactor = 1.4f;
+            param->rc.bbFactor[0] = 1.3f;
+            param->rc.bbFactor[1] = 1.2f;
+            param->rc.bbFactor[2] = 1.0f;
             if (param->rdLevel > 2)
                 param->bEnableTransformSkip = 1;
             if (param->rdLevel > 4)
                 param->bEnableRdRefine = 1;
-            param->lookaheadDepth = X265_MAX(param->lookaheadDepth, 32);
+            param->lookaheadDepth = X265_MAX(param->lookaheadDepth, 36);
             param->maxNumReferences = X265_MIN(param->maxNumReferences + 1, 6);
             if (param->limitReferences > 0 && param->maxNumReferences > 4)
                 param->limitReferences = 0;
