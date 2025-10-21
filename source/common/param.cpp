@@ -730,10 +730,10 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bIntraInBFrames = 1;
             param->bEnableWeightedPred = 1;
             param->bEnableWeightedBiPred = 1;
-            param->rc.ipFactor = 1.6f;
-            param->rc.pbFactor = 1.4f;
-            param->rc.bbFactor[0] = 1.2f;
-            param->rc.bbFactor[1] = 1.0f;
+            param->rc.ipFactor = 1.4f;
+            param->rc.pbFactor = 1.6f;
+            param->rc.bbFactor[0] = 0.8f;
+            param->rc.bbFactor[1] = 1.3f;
             if (param->rdLevel > 2)
                 param->bEnableTransformSkip = 1;
             if (param->rdLevel > 4)
@@ -755,11 +755,11 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bIntraInBFrames = 1;
             param->bEnableWeightedPred = 1;
             param->bEnableWeightedBiPred = 1;
-            param->rc.ipFactor = 1.8f;
+            param->rc.ipFactor = 1.4f;
             param->rc.pbFactor = 1.6f;
-            param->rc.bbFactor[0] = 1.4f;
-            param->rc.bbFactor[1] = 1.2f;
-            param->rc.bbFactor[2] = 1.0f;
+            param->rc.bbFactor[0] = 0.8f;
+            param->rc.bbFactor[1] = 1.4f;
+            param->rc.bbFactor[2] = 0.9f;
             if (param->rdLevel > 2)
                 param->bEnableTransformSkip = 1;
             if (param->rdLevel > 4)
