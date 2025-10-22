@@ -295,9 +295,9 @@ namespace X265_NS {
         H0("   --qg-size <int>               Specifies the size of the quantization group (64, 32, 16, 8). Default %d\n", param->rc.qgSize);
         H0("   --[no-]cutree                 Enable cutree for Adaptive Quantization. Default %s\n", OPT(param->rc.cuTree));
         H0("   --[no-]rc-grain               Enable rate-control mode to handle grains specifically. Turned on with tune grain. Default %s\n", OPT(param->rc.bEnableGrain));
-        H1("   --ipratio <float>             QP factor between I and P. Default %.2f\n", param->rc.ipFactor);
-        H1("   --pbratio <float>             QP factor between P and B. Default %.2f\n", param->rc.pbFactor);
-        H1("   --bbratio <float>             QP factor for Hierarchical B-Slices, between upper layer B and lower layer B. Default %.2f\n"
+        H0("   --ipratio <float>             QP factor between I and P. Default %.2f\n", param->rc.ipFactor);
+        H0("   --pbratio <float>             QP factor between P and B. Default %.2f\n", param->rc.pbFactor);
+        H0("   --bbratio <float>             QP factor for Hierarchical B-Slices, between upper layer B and lower layer B. Default %.2f\n"
             "                                   Use ':' to separate the independent QP factor for each layer.\n"
             "                                   For example: %.2f:%.2f      (--temporal-layers = 4 default),\n"
             "                                                %.2f:%.2f:%.2f (--temporal-layers = 5 default).\n"
