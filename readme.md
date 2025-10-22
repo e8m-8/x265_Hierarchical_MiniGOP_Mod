@@ -8,7 +8,14 @@ Primary objectives: Adjusting the inter-layer quantisation ratio to achieve bett
 Usage
 ======
 
-1. Adaptive MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
+0. Non-Dyadic MiniGOP (b-slice frames: 8, 1P-2B-6b):
+
+   ``--temporal-layers=3 --bframes=8``
+   or
+   ``--tune="minigop9nd"``
+
+   
+2. Adaptive MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
    
    ``--temporal-layers=5 --b-adapt 2 --bframe-bias=150``
    or
@@ -17,7 +24,7 @@ Usage
    When ``--temporal-layers > 3`` , --bframe-bias should in the range of  [100, 500].
 
    
-2. BB-ratio rate-control, using ':' to separate the independent factor like ``--pbratio`` for each layer:
+3. BB-ratio rate-control, using ':' to separate the independent factor like ``--pbratio`` for each layer:
 
    ``--bbratio=1.6:1.4:1.2`` for ``--temporal-layers = 5``.
    
@@ -27,11 +34,11 @@ Usage
 
    Using ``--tune='minigop8'`` or ``--tune='minigop16'`` to quickly configure all settings by default.
 
-3. Updated bframes < minigop's fixed bframes mechanism of lookahead slice decision to improve efficiency. Had passed a lot of hardware decoding tests.
+4. Updated bframes < minigop's fixed bframes mechanism of lookahead slice decision to improve efficiency. Had passed a lot of hardware decoding tests.
   ![](Org.png)
   ![](Mod_MiniGOP.png) 
 
-4. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
+5. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
 
    **WARNING: Experimental feature**
    ![](Mod_MiniGOP_Bref.png)
