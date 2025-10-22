@@ -241,26 +241,26 @@ void DPB::prepareEncode(Frame *newFrame)
         else if (isStepwiseTemporalLayerSwitchingPoint(&slice->m_rps, pocCurr, newFrame->m_tempLayer, layer))
         {
             bool isSTSA = true;
-            int id = newFrame->m_gopOffset % x265_gop_ra_length[newFrame->m_gopId];
-            for (int ii = id; (ii < x265_gop_ra_length[newFrame->m_gopId] && isSTSA == true); ii++)
+            int id = newFrame->m_gopOffset % (newFrame->m_encData->m_param->bNondyadicH ? x265_gop_ra_length_fast[newFrame->m_gopId] : x265_gop_ra_length[newFrame->m_gopId]);
+            for (int ii = id; (ii < (newFrame->m_encData->m_param->bNondyadicH ? x265_gop_ra_length_fast[newFrame->m_gopId] : x265_gop_ra_length[newFrame->m_gopId]) && isSTSA == true); ii++)
             {
-                int tempIdRef = x265_gop_ra[newFrame->m_gopId][ii].layer;
+                int tempIdRef = newFrame->m_encData->m_param->bNondyadicH ? x265_gop_ra_fast[newFrame->m_gopId][ii].layer : x265_gop_ra[newFrame->m_gopId][ii].layer;
                 if (tempIdRef == newFrame->m_tempLayer)
                 {
                     for (int jj = 0; jj < slice->m_rps.numberOfPositivePictures + slice->m_rps.numberOfNegativePictures; jj++)
                     {
                         if (slice->m_rps.bUsed[jj])
                         {
-                            int refPoc = x265_gop_ra[newFrame->m_gopId][ii].poc_offset + slice->m_rps.deltaPOC[jj];
+                            int refPoc = (newFrame->m_encData->m_param->bNondyadicH ? x265_gop_ra_fast[newFrame->m_gopId][ii].poc_offset : x265_gop_ra[newFrame->m_gopId][ii].poc_offset) + slice->m_rps.deltaPOC[jj];
                             int kk = 0;
-                            for (kk = 0; kk < x265_gop_ra_length[newFrame->m_gopId]; kk++)
+                            for (kk = 0; kk < (newFrame->m_encData->m_param->bNondyadicH ? x265_gop_ra_length_fast[newFrame->m_gopId] : x265_gop_ra_length[newFrame->m_gopId]); kk++)
                             {
-                                if (x265_gop_ra[newFrame->m_gopId][kk].poc_offset == refPoc)
+                                if ((newFrame->m_encData->m_param->bNondyadicH ? x265_gop_ra_fast[newFrame->m_gopId][kk].poc_offset : x265_gop_ra[newFrame->m_gopId][kk].poc_offset) == refPoc)
                                 {
                                     break;
                                 }
                             }
-                            if (x265_gop_ra[newFrame->m_gopId][kk].layer >= newFrame->m_tempLayer)
+                            if ((newFrame->m_encData->m_param->bNondyadicH ? x265_gop_ra_fast[newFrame->m_gopId][kk].layer : x265_gop_ra[newFrame->m_gopId][kk].layer) >= newFrame->m_tempLayer)
                             {
                                 isSTSA = false;
                                 break;

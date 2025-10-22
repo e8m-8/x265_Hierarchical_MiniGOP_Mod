@@ -4134,6 +4134,36 @@ void Encoder::configure(x265_param *p)
         x265_log(p, X265_LOG_WARNING, "Setting the number of B-frames to 5, as MCSTF filter is enabled.\n");
         p->bframes = 5;
     }
+
+    if (p->bNondyadicH == 1)
+    {
+        if (p->bEnableTemporalSubLayers != 3)
+        {
+            x265_log(p, X265_LOG_WARNING, "The temporal sub-layers must be 3 when enable Nondyadic Hierarchical GOP.\n");
+            p->bEnableTemporalSubLayers = 3;
+        }
+        if (p->bframes != 8)
+        {
+            x265_log(p, X265_LOG_WARNING, "The bframes must be 8 when enable Nondyadic Hierarchical GOP.\n");
+            p->bframes = 8;
+        }
+        if (p->bFrameAdaptive != 0)
+        {
+            x265_log(p, X265_LOG_WARNING, "Adaptive B-frame placement is not supported when enable Nondyadic Hierarchical GOP.\n");
+            p->bFrameAdaptive = 0;
+        }
+    }
+
+    if (p->bEnableTemporalSubLayers == 3 && p->bframes == 8)
+    {
+        if (p->bNondyadicH != 1)
+        {
+            x265_log(p, X265_LOG_WARNING, "When bframes = 8 and temporal layer = 3, Enable Nondyadic Hierarchical GOP.\n");
+            p->bNondyadicH = 1;
+            p->bFrameAdaptive = 0;
+        }
+    }
+
     if ((p->bEnableTemporalSubLayers > 2) && !p->bframes)
     {
         x265_log(p, X265_LOG_WARNING, "B frames not enabled, temporal sublayer disabled.\n");
@@ -4157,8 +4187,15 @@ void Encoder::configure(x265_param *p)
     {
         if (p->bframes != x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1] )
         {
-            x265_log(p, X265_LOG_WARNING, "The maximum B-frame must be %d match the temporal layer structure of the current MiniGOP %d.\n", x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1], x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1] + 1);
-            p->bframes = x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1];
+            if (p->bframes == 8 && p->bEnableTemporalSubLayers == 3 && p->bNondyadicH == 1)
+            {
+                x265_log(p, X265_LOG_WARNING, "The Nondyadic Hierarchical GOP is Enable Now.\n");
+            }
+            else
+            {
+                x265_log(p, X265_LOG_WARNING, "The maximum B-frame must be %d match the temporal layer structure of the current MiniGOP %d.\n", x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1], x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1] + 1);
+                p->bframes = x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1];
+            }
         }
     }
 

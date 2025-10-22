@@ -1089,7 +1089,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool)
         switch (m_param->bEnableTemporalSubLayers)
         {
         case 3:
-            m_gopId = 2;
+            m_gopId = m_param->bNondyadicH ? 7 : 2;
             break;
         case 4:
             m_gopId = 6;
@@ -2208,7 +2208,7 @@ void Lookahead::slicetypeDecide()
         {
             int leftOver = bframes + 1;
             int8_t gopId = X265_MAX(X265_MIN(m_gopId - 1, leftOver - 2),-1);
-            int gopLen = x265_gop_ra_length[gopId];
+            int gopLen = m_param->bNondyadicH ? x265_gop_ra_length_fast[gopId] : x265_gop_ra_length[gopId];
             int listReset = 0;
 
             m_outputLock.acquire();
@@ -2222,49 +2222,64 @@ void Lookahead::slicetypeDecide()
                     list[newbFrames - 1]->m_lowres.bLastMiniGopBFrame = true;
                 list[newbFrames]->m_lowres.leadingBframes = newbFrames;
                 m_lastNonB = &list[newbFrames]->m_lowres;
-
-                int sub_leftOver = leftOver;
-                int sub_listReset = listReset;
-                int8_t sub_gopId;
-                switch (m_gopId)
-                {
-                case 2:
-                    sub_gopId = 1; break;
-                case 6:
-                    sub_gopId = 2; break;
-                case 14:
-                    sub_gopId = 3; break;
-                default:
-                    break;
-                }
-                int sub_gopLen = x265_base_gop_ra_length[sub_gopId];
                 
                 /* insert a bref into the sequence */
                 if (m_param->bBPyramid && newbFrames)
                 {
-                    while ((sub_gopId >= 0) && (sub_leftOver > 1))
+                    if (m_param->bNondyadicH != 1)
                     {
-                        if (sub_leftOver < sub_gopLen)
+		                int sub_leftOver = leftOver;
+		                int sub_listReset = listReset;
+		                int8_t sub_gopId;
+		                switch (m_gopId)
+		                {
+		                case 2:
+		                    sub_gopId = 1; break;
+		                case 6:
+		                    sub_gopId = 2; break;
+		                case 14:
+		                    sub_gopId = 3; break;
+		                default:
+		                    break;
+		                }
+		                int sub_gopLen = x265_base_gop_ra_length[sub_gopId];
+						
+                        while ((sub_gopId >= 0) && (sub_leftOver > 1))
                         {
-                            sub_gopId = sub_gopId - 1;
-                            sub_gopLen = x265_base_gop_ra_length[sub_gopId];
-                            continue;
-                        }
-                        else
-                        {
-                            int sub_newbFrames = sub_listReset + sub_gopLen - 1;
-                            if (sub_newbFrames < newbFrames)
+                            if (sub_leftOver < sub_gopLen)
                             {
-                                list[sub_newbFrames]->m_lowres.sliceType = X265_TYPE_BREF;
+                                sub_gopId = sub_gopId - 1;
+                                sub_gopLen = x265_base_gop_ra_length[sub_gopId];
+                                continue;
+                            }
+                            else
+                            {
+                                int sub_newbFrames = sub_listReset + sub_gopLen - 1;
+                                if (sub_newbFrames < newbFrames)
+                                {
+                                    list[sub_newbFrames]->m_lowres.sliceType = X265_TYPE_BREF;
+                                    brefs++;
+                                }
+
+                                placeBref(list, sub_listReset, sub_newbFrames, sub_newbFrames + 1, &brefs);
+
+                                sub_listReset += sub_gopLen;
+                                sub_leftOver = sub_leftOver - sub_gopLen;
+                                sub_gopId -= 1;
+                                sub_gopLen = (sub_gopId >= 0) ? x265_base_gop_ra_length[sub_gopId] : 0;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (int j = 1; j < gopLen; j++)
+                        {
+                            if (x265_gop_ra_fast[gopId][j].isNonBase == 0)
+                            {
+		                        int offset = listReset + x265_gop_ra_fast[gopId][j].poc_offset - 1;
+		                        list[offset]->m_lowres.sliceType = X265_TYPE_BREF;
                                 brefs++;
                             }
-
-                            placeBref(list, sub_listReset, sub_newbFrames, sub_newbFrames + 1, &brefs);
-
-                            sub_listReset += sub_gopLen;
-                            sub_leftOver = sub_leftOver - sub_gopLen;
-                            sub_gopId -= 1;
-                            sub_gopLen = (sub_gopId >= 0) ? x265_base_gop_ra_length[sub_gopId] : 0;
                         }
                     }
                 }
@@ -2289,42 +2304,78 @@ void Lookahead::slicetypeDecide()
 
                     if (newbFrames)
                     {
-                        sub_leftOver = leftOver;
-                        sub_listReset = listReset;
-                        switch (m_gopId)
+                        if (m_param->bNondyadicH == 1)
                         {
-                        case 2:
-                            sub_gopId = 1; break;
-                        case 6:
-                            sub_gopId = 2; break;
-                        case 14:
-                            sub_gopId = 3; break;
-                        default:
-                            break;
-                        }
-                        sub_gopLen = x265_base_gop_ra_length[sub_gopId];
-
-                        while ((sub_gopId >= 0) && (sub_leftOver > 1))
-                        {
-                            if (sub_leftOver < sub_gopLen)
+                            int pts_lo = x265_gop_ra_fast[gopId][0].poc_offset;
+                            int pts_st = 0;
+                            int pts_ed = 0;
+                            for (int j = 1; j < x265_gop_ra_fast[gopId][0].poc_offset; j++)
                             {
-                                sub_gopId = sub_gopId - 1;
-                                sub_gopLen = x265_base_gop_ra_length[sub_gopId];
-                                continue;
+                                if ((x265_gop_ra_fast[gopId][j].layer == 1) && (pts_lo > 3))
+                                {
+                                    estGroup.singleCost(0, pts_lo, x265_gop_ra_fast[gopId][j].poc_offset);
+                                    if (pts_ed < x265_gop_ra_fast[gopId][j].poc_offset)
+                                    {
+                                        pts_st = pts_ed;
+                                        pts_ed = x265_gop_ra_fast[gopId][j].poc_offset;
+                                    }
+                                }
+                                else
+                                {
+                                    if (pts_ed < x265_gop_ra_fast[gopId][j].poc_offset)
+                                    {
+                                        pts_st = pts_ed;
+                                        pts_ed = pts_lo;
+                                    }
+                                    estGroup.singleCost(pts_st, pts_ed, x265_gop_ra_fast[gopId][j].poc_offset);
+                                }
                             }
-                            else
+                        }
+                        else
+                        {
+                            int sub_leftOver = leftOver;
+                            int sub_listReset = listReset;
+                            int8_t sub_gopId;
+                            switch (m_gopId)
                             {
-                                int sub_newbFrames = sub_listReset + sub_gopLen - 1;
-                                if (sub_newbFrames < newbFrames)
-                                    estGroup.singleCost(sub_listReset, newbFrames + 1, sub_newbFrames + 1);
+                            case 2:
+                                sub_gopId = 1;
+                                if (m_param->bNondyadicH)
+                                {
+                                    sub_gopId = 3;
+                                }
+                                break;
+                            case 6:
+                                sub_gopId = 2; break;
+                            case 14:
+                                sub_gopId = 3; break;
+                            default:
+                                break;
+                            }
+                            int sub_gopLen = x265_base_gop_ra_length[sub_gopId];
 
-                                if (sub_newbFrames)
-                                    compCostBref(frames, sub_listReset, sub_newbFrames, sub_gopLen);
+                            while ((sub_gopId >= 0) && (sub_leftOver > 1))
+                            {
+                                if (sub_leftOver < sub_gopLen)
+                                {
+                                    sub_gopId = sub_gopId - 1;
+                                    sub_gopLen = x265_base_gop_ra_length[sub_gopId];
+                                    continue;
+                                }
+                                else
+                                {
+                                    int sub_newbFrames = sub_listReset + sub_gopLen - 1;
+                                    if (sub_newbFrames < newbFrames)
+                                        estGroup.singleCost(sub_listReset, newbFrames + 1, sub_newbFrames + 1);
 
-                                sub_listReset += sub_gopLen;
-                                sub_leftOver = sub_leftOver - sub_gopLen;
-                                sub_gopId -= 1;
-                                sub_gopLen = (sub_gopId >= 0) ? x265_base_gop_ra_length[sub_gopId] : 0;
+                                    if (sub_newbFrames)
+                                        compCostBref(frames, sub_listReset, sub_newbFrames, sub_gopLen);
+
+                                    sub_listReset += sub_gopLen;
+                                    sub_leftOver = sub_leftOver - sub_gopLen;
+                                    sub_gopId -= 1;
+                                    sub_gopLen = (sub_gopId >= 0) ? x265_base_gop_ra_length[sub_gopId] : 0;
+                                }
                             }
                         }
                     }
@@ -2349,8 +2400,8 @@ void Lookahead::slicetypeDecide()
                 list[newbFrames]->m_reorderedPts = pts[idx++];
                 list[newbFrames]->m_gopOffset = 0;
                 list[newbFrames]->m_gopId = gopId;
-                list[newbFrames]->m_qpLayer = x265_gop_ra[gopId][0].layer;
-                list[newbFrames]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[gopId][0].isNonBase : x265_gop_ra[gopId][0].layer;
+                list[newbFrames]->m_qpLayer = m_param->bNondyadicH ? x265_gop_ra_fast[gopId][0].layer : x265_gop_ra[gopId][0].layer;
+                list[newbFrames]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[gopId][0].isNonBase : (m_param->bNondyadicH ? x265_gop_ra_fast[gopId][0].layer : x265_gop_ra[gopId][0].layer);
 
                 m_outputQueue.pushBack(*list[newbFrames]);
 
@@ -2358,15 +2409,15 @@ void Lookahead::slicetypeDecide()
                 int i = 1, j = 1;
                 while (i < gopLen)
                 {
-                    int offset = listReset + (x265_gop_ra[gopId][j].poc_offset - 1);
+                    int offset = listReset + ((m_param->bNondyadicH ? x265_gop_ra_fast[gopId][j].poc_offset : x265_gop_ra[gopId][j].poc_offset) - 1);
                     if (!list[offset] || offset == newbFrames)
                         continue;
 
                     // Assign gop offset and temporal layer of frames
                     list[offset]->m_gopOffset = j;
                     list[offset]->m_gopId = gopId;
-                    list[offset]->m_qpLayer = x265_gop_ra[gopId][j].layer;
-                    list[offset]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[gopId][j++].isNonBase : x265_gop_ra[gopId][j++].layer;
+                    list[offset]->m_qpLayer = m_param->bNondyadicH ? x265_gop_ra_fast[gopId][j].layer : x265_gop_ra[gopId][j].layer;
+                    list[offset]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[gopId][j++].isNonBase : (m_param->bNondyadicH ? x265_gop_ra_fast[gopId][j++].layer : x265_gop_ra[gopId][j++].layer);
 
                     list[offset]->m_reorderedPts = pts[idx++];
                     m_outputQueue.pushBack(*list[offset]);
@@ -2376,7 +2427,7 @@ void Lookahead::slicetypeDecide()
                 listReset += gopLen;
                 leftOver = leftOver - gopLen;
                 gopId -= 1;
-                gopLen = (gopId >= 0) ? x265_gop_ra_length[gopId] : 0;
+                gopLen = (gopId >= 0) ? (m_param->bNondyadicH ? x265_gop_ra_length_fast[gopId] : x265_gop_ra_length[gopId]) : 0;
             }
 
             if (leftOver == 1)
@@ -2443,7 +2494,22 @@ void Lookahead::slicetypeDecide()
             /* insert a bref into the sequence */
             if (m_param->bBPyramid && !brefs)
             {
-                placeBref(list, 0, bframes, bframes + 1, &brefs);
+                if (m_param->bNondyadicH == 1)
+                {
+                    for (int j = 1; j < 9; j++)
+                    {
+                        if (x265_gop_ra_fast[m_gopId][j].isNonBase == 0)
+                        {
+                            int offset = x265_gop_ra_fast[m_gopId][j].poc_offset - 1;
+						    list[offset]->m_lowres.sliceType = X265_TYPE_BREF;
+                            brefs++;
+                        }
+                    }
+                }
+                else
+                {
+                    placeBref(list, 0, bframes, bframes + 1, &brefs);
+                }
             }
 
             /* calculate the frame costs ahead of time for estimateFrameCost while we still have lowres */
@@ -2464,7 +2530,37 @@ void Lookahead::slicetypeDecide()
                 CostEstimateGroup estGroup(*this, frames);
                 estGroup.singleCost(p0, p1, b);
 
-                compCostBref(frames, 0, bframes, bframes + 1);
+                if (m_param->bNondyadicH == 1)
+                {
+                    int pts_lo = x265_gop_ra_fast[m_gopId][0].poc_offset;
+                    int pts_st = 0;
+                    int pts_ed = 0;
+                    for (int j = 1; j < x265_gop_ra_fast[m_gopId][0].poc_offset; j++)
+                    {
+                        if ((x265_gop_ra_fast[m_gopId][j].layer == 1) && (pts_lo > 3))
+                        {
+                            estGroup.singleCost(0, pts_lo, x265_gop_ra_fast[m_gopId][j].poc_offset);
+                            if (pts_ed < x265_gop_ra_fast[m_gopId][j].poc_offset)
+                            {
+                                pts_st = pts_ed;
+                                pts_ed = x265_gop_ra_fast[m_gopId][j].poc_offset;
+                            }
+                        }
+                        else
+                        {
+                            if (pts_ed < x265_gop_ra_fast[m_gopId][j].poc_offset)
+                            {
+                                pts_st = pts_ed;
+                                pts_ed = pts_lo;
+                            }
+                            estGroup.singleCost(pts_st, pts_ed, x265_gop_ra_fast[m_gopId][j].poc_offset);
+                        }
+                    }
+                }
+                else
+                {
+                    compCostBref(frames, 0, bframes, bframes + 1);
+                }
             }
 
             m_inputLock.acquire();
@@ -2488,22 +2584,22 @@ void Lookahead::slicetypeDecide()
             list[bframes]->m_reorderedPts = pts[idx++];
             list[bframes]->m_gopOffset = 0;
             list[bframes]->m_gopId = m_gopId;
-            list[bframes]->m_qpLayer = x265_gop_ra[m_gopId][0].layer;
-            list[bframes]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[m_gopId][0].isNonBase : x265_gop_ra[m_gopId][0].layer;
+            list[bframes]->m_qpLayer = m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][0].layer : x265_gop_ra[m_gopId][0].layer;
+            list[bframes]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[m_gopId][0].isNonBase : (m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][0].layer : x265_gop_ra[m_gopId][0].layer);
             m_outputQueue.pushBack(*list[bframes]);
 
             int i = 1, j = 1;
             while (i <= bframes)
             {
-                int offset = x265_gop_ra[m_gopId][j].poc_offset - 1;
+                int offset = (m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][j].poc_offset : x265_gop_ra[m_gopId][j].poc_offset) - 1;
                 if (!list[offset] || offset == bframes)
                     continue;
 
                 // Assign gop offset and temporal layer of frames
                 list[offset]->m_gopOffset = j;
                 list[offset]->m_gopId = m_gopId;
-                list[offset]->m_qpLayer = x265_gop_ra[m_gopId][j].layer;
-                list[offset]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[m_gopId][j++].isNonBase : x265_gop_ra[m_gopId][j++].layer;
+                list[offset]->m_qpLayer = m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][j].layer : x265_gop_ra[m_gopId][j].layer;
+                list[offset]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[m_gopId][j++].isNonBase : (m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][j++].layer : x265_gop_ra[m_gopId][j++].layer);
 
                 /* add B frames to output queue */
                 list[offset]->m_reorderedPts = pts[idx++];

@@ -1127,6 +1127,162 @@ static const x265_temporal_layer x265_gop_ra[X265_MAX_GOP_CONFIG][X265_MAX_GOP_L
     }, //16
 };
 
+static const int8_t x265_gop_ra_length_fast[8] = {2, 3, 4, 5, 6, 7, 8, 9};
+static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
+    {
+        { 2, 0, 0},
+        { 1, 2, 1},
+        
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+    }, //2
+    {
+        { 3, 0, 0},
+        { 1, 2, 1},
+        { 2, 2, 1},
+        
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+    }, //3
+    {
+        { 4, 0, 0},
+        { 2, 1, 0},
+        { 1, 2, 1},
+        { 3, 2, 1},
+        
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+    }, //4
+    {
+        { 5, 0, 0},
+        { 2, 1, 0},
+        { 1, 2, 1},
+        { 3, 2, 1},
+        { 4, 2, 1},
+        
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+    }, //5
+    {
+        { 6, 0, 0},
+        { 2, 1, 0},
+        { 1, 2, 1},
+        { 4, 1, 0},
+        { 3, 2, 1},
+        { 5, 2, 1},
+        
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+    }, //6
+    {
+        { 7, 0, 0},
+        { 2, 1, 0},
+        { 1, 2, 1},
+        { 5, 1, 0},
+        { 3, 2, 1},
+        { 4, 2, 1},
+        { 6, 2, 1},
+        
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+    }, //7
+    {
+        { 8, 0, 0},
+        { 3, 1, 0},
+        { 1, 2, 1},
+        { 2, 2, 1},
+        { 5, 1, 0},
+        { 4, 2, 1},
+        { 6, 2, 1},
+        { 7, 2, 1},
+        
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+    }, //8
+    {
+        { 9, 0, 0},
+        { 3, 1, 0},
+        { 1, 2, 1},
+        { 2, 2, 1},
+        { 6, 1, 0},
+        { 4, 2, 1},
+        { 5, 2, 1},
+        { 7, 2, 1},
+        { 8, 2, 1},
+        
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+        {-1,-1,-1},
+    } //9
+};
+
 typedef enum
 {
     X265_SHARE_MODE_FILE = 0,
@@ -1359,6 +1515,9 @@ typedef struct x265_param
      * at a higher temporal layer (layer 1) that decodes all the frames in the
      * sequence. */
     int       bEnableTemporalSubLayers;
+
+    /* Enable Nondyadic Hierarchical GOP Temporal Sub Layers. Designed for low Ref and efficient encoding.*/
+    int       bNondyadicH;
 
     /* Enable the B-Ref on Base Temporal Sub Layers, and compress higher layer to layer 2.
      * it needs higher maximum number of L0 references.
@@ -2495,7 +2654,7 @@ static const char * const x265_preset_names[] = { "ultrafast", "superfast", "ver
  *      100 times faster than placebo!
  *
  *      Currently available tunings are: */
-static const char * const x265_tune_names[] = { "psnr", "ssim", "grain", "zerolatency", "fastdecode", "fastdecodelowdelay", "animation", "minigop8", "minigop16", "adaptminigop", 0 };
+static const char * const x265_tune_names[] = { "psnr", "ssim", "grain", "zerolatency", "fastdecode", "fastdecodelowdelay", "animation", "minigop8", "minigop9nd", "minigop16", "adaptminigop", 0 };
 
 /*      returns 0 on success, negative on failure (e.g. invalid preset/tune name). */
 int x265_param_default_preset(x265_param *, const char *preset, const char *tune);

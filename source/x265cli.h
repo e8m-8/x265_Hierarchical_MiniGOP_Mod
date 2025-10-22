@@ -317,6 +317,8 @@ static const struct option long_options[] =
     { "no-aq-motion",         no_argument, NULL, 0 },
     { "bref-on-base-layer",         no_argument, NULL, 0 },
     { "no-bref-on-base-layer",      no_argument, NULL, 0 },
+    { "h-nondyadic-gop",         no_argument, NULL, 0 },
+    { "no-h-nondyadic-gop",      no_argument, NULL, 0 },
     { "ssim-rd",              no_argument, NULL, 0 },
     { "no-ssim-rd",           no_argument, NULL, 0 },
     { "hdr",                  no_argument, NULL, 0 },

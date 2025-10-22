@@ -380,6 +380,7 @@ void x265_param_default(x265_param* param)
     param->bOptCUDeltaQP        = 0;
     param->bAQMotion = 0;
     param->bRefSublayer = 0;
+    param->bNondyadicH = 0;
     param->bHDROpt = 0; /*DEPRECATED*/
     param->bHDR10Opt = 0;
     param->analysisReuseLevel = 0;  /*DEPRECATED*/
@@ -741,6 +742,31 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->lookaheadDepth = X265_MAX(param->lookaheadDepth, 16);
             param->maxNumReferences = X265_MIN(param->maxNumReferences, 6);
             if (param->limitReferences > 0 && param->maxNumReferences > 3)
+                param->limitReferences = 0;
+        }
+        else if (!strcmp(tune, "minigop9nd"))
+        {
+            param->bframes = 8;
+			param->bNondyadicH = 1;
+            param->bEnableTemporalSubLayers = 3;
+            param->bFrameAdaptive = 0;
+            param->keyframeMax = X265_MAX(param->keyframeMax, 36);
+            if (param->scenecutThreshold == 0)
+                param->scenecutThreshold = 40;
+            param->bBPyramid = 1;
+            param->bIntraInBFrames = 1;
+            param->bEnableWeightedPred = 1;
+            param->bEnableWeightedBiPred = 1;
+            param->rc.ipFactor = 1.4f;
+            param->rc.pbFactor = 1.6f;
+            param->rc.bbFactor[0] = 0.8f;
+            if (param->rdLevel > 2)
+                param->bEnableTransformSkip = 1;
+            if (param->rdLevel > 4)
+                param->bEnableRdRefine = 1;
+            param->lookaheadDepth = X265_MAX(param->lookaheadDepth, 18);
+            param->maxNumReferences = X265_MIN(param->maxNumReferences, 6);
+            if (param->limitReferences > 0 && param->maxNumReferences > 2)
                 param->limitReferences = 0;
         }
         else if (!strcmp(tune, "minigop16"))
@@ -1462,6 +1488,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("multi-pass-opt-distortion") p->analysisMultiPassDistortion = atobool(value);
         OPT("aq-motion") p->bAQMotion = atobool(value);
         OPT("bref-on-base-layer") p->bRefSublayer = atobool(value);
+        OPT("h-nondyadic-gop") p->bNondyadicH = atobool(value);
         OPT("dynamic-rd") p->dynamicRd = atof(value);
 		OPT("cra-nal") p->craNal = atobool(value);
         OPT("analysis-reuse-level")
@@ -2587,6 +2614,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bOptCUDeltaQP, "opt-cu-delta-qp");
     BOOL(p->bAQMotion, "aq-motion");
     BOOL(p->bRefSublayer, "bref-on-base-layer");
+    BOOL(p->bNondyadicH, "h-nondyadic-gop");
     BOOL(p->bEmitHDR10SEI, "hdr10");
     BOOL(p->bHDR10Opt, "hdr10-opt");
     BOOL(p->bDhdr10opt, "dhdr10-opt");
@@ -3090,6 +3118,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->analysisMultiPassRefine = src->analysisMultiPassRefine;
     dst->bAQMotion = src->bAQMotion;
     dst->bRefSublayer = src->bRefSublayer;
+    dst->bNondyadicH = src->bNondyadicH;
     dst->bSsimRd = src->bSsimRd;
     dst->dynamicRd = src->dynamicRd;
     dst->bEmitHDR10SEI = src->bEmitHDR10SEI;

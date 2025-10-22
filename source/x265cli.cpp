@@ -110,9 +110,10 @@ namespace X265_NS {
         H0("-p/--preset <string>             Trade off performance for compression efficiency. Default medium\n");
         H0("                                 ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow, or placebo\n");
         H0("-t/--tune <string>               Tune the settings for a particular type of source or situation:\n");
-        H0("                                 psnr, ssim, grain, zerolatency, fastdecode, fastdecodelowdelay, minigop8, minigop16, adaptminigop\n");
+        H0("                                 psnr, ssim, grain, zerolatency, fastdecode, fastdecodelowdelay, minigop8, minigop9nd, minigop16, adaptminigop\n");
         H0("                                   - fastdecodelowdelay : Simply set the I & P-Frame Only Fast Decode Low Delay supported scenecut.\n"
            "                                   - minigop8 : Simply set the parameters for 7-frame Hierarchical B-frame implementation with 4 temporal layers.\n"
+           "                                   - minigop9nd : Simply set the parameters for 8-frame Nondyadic Hierarchical B-frame implementation with 3 temporal layers.\n"
            "                                   - minigop16 : Simply set the parameters for 15-frame Hierarchical B-frame implementation with 5 temporal layers.\n"
            "                                   - adaptminigop : Simply set the parameters for Adaptive Hierarchical B-frame implementation.\n"
            "                                                    Temporal layers could be reduced due to viterbi 1/3/7/15-frame B path selection.\n");
@@ -388,8 +389,9 @@ namespace X265_NS {
         H0("   --temporal-layers             Enable by specifying number of [2, 5]. Default %s\n"
             "                                   - 2 : all reference frames in the base layer and non-reference frames in the enhancement layer,\n"
             "                                         without any constraint on the number of B-frames.\n"
-            "                                   - 3 : 3-frame Hierarchical B-frame implementation.\n"
-            "                                         1P - 1B - 2b miniGOP structure, with 3 temporal layers.\n"
+            "                                   - 3 : 3-frame Hierarchical B-frame or 8-frame Nondyadic Hierarchical B-frame implementation .\n"
+            "                                         1P - 1B - 2b miniGOP 4-frame structure, with 3 temporal layers.\n"
+            "                                         1P - 2B - 6b miniGOP 9-frame structure, with 3 temporal layers.\n"
             "                                   - 4 : 7-frame Hierarchical B-frame implementation.\n"
             "                                         1P - 1B - 2B - 4b miniGOP structure, with 4 temporal layers.\n"
             "                                   - 5 : 15-frame Hierarchical B-frame implementation.\n"
@@ -398,6 +400,8 @@ namespace X265_NS {
             "                                  temporal layers could be reduced due to viterbi B path selection when --b-adapt = 2.\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]bref-on-base-layer     Using B-ref Frame in Base Temporal Sub Layer and Compressing higher layers to layer 2.\n"
             "                                   When enable, it limit the keyframe distance at 4.\n");
+        H0("   --[no-]h-nondyadic-gop        Using 8-frame Nondyadic Hierarchical B-frame implementation with 3 temporal layers.\n"
+            "                                   When enable, it limit the --temporal-layers = 3, --bframes = 8.\n");
         H0("   --[no-]aud                    Emit access unit delimiters at the start of each access unit. Default %s\n", OPT(param->bEnableAccessUnitDelimiters));
         H0("   --[no-]eob                    Emit end of bitstream nal unit at the end of the bitstream. Default %s\n", OPT(param->bEnableEndOfBitstream));
         H0("   --[no-]eos                    Emit end of sequence nal unit at the end of every coded video sequence. Default %s\n", OPT(param->bEnableEndOfSequence));
