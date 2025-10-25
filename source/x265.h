@@ -638,7 +638,9 @@ typedef enum
 
 #define X265_BASE_GOP_CONFIG 5
 #define X265_MAX_GOP_CONFIG 15
+#define X265_FAST_GOP_CONFIG 8
 #define X265_MAX_GOP_LENGTH 16
+#define X265_FAST_GOP_LENGTH 9
 #define MAX_T_LAYERS 7
 
 #if ENABLE_MULTIVIEW
@@ -1127,19 +1129,11 @@ static const x265_temporal_layer x265_gop_ra[X265_MAX_GOP_CONFIG][X265_MAX_GOP_L
     }, //16
 };
 
-static const int8_t x265_gop_ra_length_fast[8] = {2, 3, 4, 5, 6, 7, 8, 9};
-static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
+static const int8_t x265_gop_ra_length_fast[X265_FAST_GOP_CONFIG] = {2, 3, 4, 5, 6, 7, 8, 9};
+static const x265_temporal_layer x265_gop_ra_fast[X265_FAST_GOP_CONFIG][X265_FAST_GOP_LENGTH] = {
     {
         { 2, 0, 0},
         { 1, 2, 1},
-        
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
@@ -1152,14 +1146,6 @@ static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
         { 3, 0, 0},
         { 1, 2, 1},
         { 2, 2, 1},
-        
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
@@ -1172,14 +1158,6 @@ static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
         { 2, 1, 0},
         { 1, 2, 1},
         { 3, 2, 1},
-        
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
@@ -1192,14 +1170,6 @@ static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
         { 1, 2, 1},
         { 3, 2, 1},
         { 4, 2, 1},
-        
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
@@ -1212,14 +1182,6 @@ static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
         { 4, 1, 0},
         { 3, 2, 1},
         { 5, 2, 1},
-        
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
@@ -1232,14 +1194,6 @@ static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
         { 3, 2, 1},
         { 4, 2, 1},
         { 6, 2, 1},
-        
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
         {-1,-1,-1},
         {-1,-1,-1},
     }, //7
@@ -1252,14 +1206,6 @@ static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
         { 4, 2, 1},
         { 6, 2, 1},
         { 7, 2, 1},
-        
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
         {-1,-1,-1},
     }, //8
     {
@@ -1272,14 +1218,6 @@ static const x265_temporal_layer x265_gop_ra_fast[8][X265_MAX_GOP_LENGTH] = {
         { 5, 2, 1},
         { 7, 2, 1},
         { 8, 2, 1},
-        
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
-        {-1,-1,-1},
     } //9
 };
 

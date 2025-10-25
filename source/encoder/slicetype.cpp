@@ -2496,7 +2496,7 @@ void Lookahead::slicetypeDecide()
             {
                 if (m_param->bNondyadicH == 1)
                 {
-                    for (int j = 1; j < 9; j++)
+                    for (int j = 1; j < x265_gop_ra_fast[m_gopId][0].poc_offset; j++)
                     {
                         if (x265_gop_ra_fast[m_gopId][j].isNonBase == 0)
                         {
@@ -2537,7 +2537,7 @@ void Lookahead::slicetypeDecide()
                     int pts_ed = 0;
                     for (int j = 1; j < x265_gop_ra_fast[m_gopId][0].poc_offset; j++)
                     {
-                        if ((x265_gop_ra_fast[m_gopId][j].layer == 1) && (pts_lo > 3))
+                        if (x265_gop_ra_fast[m_gopId][j].layer == 1)
                         {
                             estGroup.singleCost(0, pts_lo, x265_gop_ra_fast[m_gopId][j].poc_offset);
                             if (pts_ed < x265_gop_ra_fast[m_gopId][j].poc_offset)
