@@ -2333,50 +2333,10 @@ void Lookahead::slicetypeDecide()
                         }
                         else
                         {
-                            int sub_leftOver = leftOver;
-                            int sub_listReset = listReset;
-                            int8_t sub_gopId;
-                            switch (m_gopId)
-                            {
-                            case 2:
-                                sub_gopId = 1;
-                                if (m_param->bNondyadicH)
-                                {
-                                    sub_gopId = 3;
-                                }
-                                break;
-                            case 6:
-                                sub_gopId = 2; break;
-                            case 14:
-                                sub_gopId = 3; break;
-                            default:
-                                break;
-                            }
-                            int sub_gopLen = x265_base_gop_ra_length[sub_gopId];
-
-                            while ((sub_gopId >= 0) && (sub_leftOver > 1))
-                            {
-                                if (sub_leftOver < sub_gopLen)
-                                {
-                                    sub_gopId = sub_gopId - 1;
-                                    sub_gopLen = x265_base_gop_ra_length[sub_gopId];
-                                    continue;
-                                }
-                                else
-                                {
-                                    int sub_newbFrames = sub_listReset + sub_gopLen - 1;
-                                    if (sub_newbFrames < newbFrames)
-                                        estGroup.singleCost(sub_listReset, newbFrames + 1, sub_newbFrames + 1);
-
-                                    if (sub_newbFrames)
-                                        compCostBref(frames, sub_listReset, sub_newbFrames, sub_gopLen);
-
-                                    sub_listReset += sub_gopLen;
-                                    sub_leftOver = sub_leftOver - sub_gopLen;
-                                    sub_gopId -= 1;
-                                    sub_gopLen = (sub_gopId >= 0) ? x265_base_gop_ra_length[sub_gopId] : 0;
-                                }
-                            }
+                            for (int i = 0, cnt = x265_gop_ra_length[newbFrames - 1] - 1; i < cnt; i++)
+                                estGroup.singleCost(listReset + x265_gop_cost_tbl[newbFrames - 1][i].l,
+                                                    listReset + x265_gop_cost_tbl[newbFrames - 1][i].r,
+                                                    listReset + x265_gop_cost_tbl[newbFrames - 1][i].n);
                         }
                     }
                 }
@@ -2436,8 +2396,6 @@ void Lookahead::slicetypeDecide()
 
                 int newbFrames = listReset + leftOver - 1;
                 list[newbFrames]->m_lowres.sliceType = IS_X265_TYPE_I(list[newbFrames]->m_lowres.sliceType) ? list[newbFrames]->m_lowres.sliceType : X265_TYPE_P;
-                if (newbFrames)
-                        list[newbFrames - 1]->m_lowres.bLastMiniGopBFrame = true;
                 list[newbFrames]->m_lowres.leadingBframes = newbFrames;
                 m_lastNonB = &list[newbFrames]->m_lowres;
 
@@ -2458,9 +2416,6 @@ void Lookahead::slicetypeDecide()
                     CostEstimateGroup estGroup(*this, frames);
 
                     estGroup.singleCost(p0, p1, b);
-
-                    if (newbFrames)
-                        compCostBref(frames, listReset, newbFrames, newbFrames + 1);
                 }
 
                 m_inputLock.acquire();
@@ -2559,7 +2514,10 @@ void Lookahead::slicetypeDecide()
                 }
                 else
                 {
-                    compCostBref(frames, 0, bframes, bframes + 1);
+                    for (int i = 0, cnt = x265_gop_ra_length[bframes - 1] - 1; i < cnt; i++)
+                        estGroup.singleCost(x265_gop_cost_tbl[bframes - 1][i].l,
+                                            x265_gop_cost_tbl[bframes - 1][i].r,
+                                            x265_gop_cost_tbl[bframes - 1][i].n);
                 }
             }
 
