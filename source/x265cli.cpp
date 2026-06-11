@@ -207,8 +207,8 @@ namespace X265_NS {
            "                                    When --temporal-layers > 2, it will be set to specific values.\n", param->bframes);
         H1("   --bframe-bias <integer>       Bias towards B frame decisions.\n"
 			"                                   When --temporal-layers < 4 : [-90, 100]\n"
-			"                                   When --temporal-layers > 3 : [100, 500]\n"
-			"                                   Default %d (--temporal-layers < 4) or 100 (--temporal-layers > 3)\n", param->bFrameBias);
+			"                                   When --temporal-layers > 3 : [-90, 300]\n"
+			"                                   Default %d\n", param->bFrameBias);
         H0("   --b-adapt <0..2>              Adaptive B frame scheduling. Default %d\n"
 			"                                   When --temporal-layers > 2, mode 1 is not applicable.\n"
 			"                                   - 0 : none, the GOP structure is fixed based on the values of --keyint and --bframes.\n"

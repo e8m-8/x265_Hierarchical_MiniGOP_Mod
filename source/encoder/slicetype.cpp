@@ -3506,7 +3506,7 @@ void Lookahead::slicetypePath(Lowres **frames, int length, char(*best_paths)[X26
     /* Iterate over all currently possible paths */
     if (m_param->bEnableTemporalSubLayers > 2)
     {
-        for (int path = 0; path < num_paths; path = path * 2 + 1)
+        for (int path = 0; path < num_paths; path = (length <= 3) ? (path + 1) : (path * 2 + 1))
         {
             /* Add suffixes to the current path */
             int len = length - (path + 1);
@@ -3593,14 +3593,24 @@ int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t thresh
 
         if (m_param->bBPyramid && next_p - cur_p > 2)
         {
-            int middle = cur_p + (next_p - cur_p) / 2;
-            cost += estGroup.singleCost(cur_p, next_p, middle);
+            if (m_param->bEnableTemporalSubLayers > 2)
+            {
+                for (int i = 0, fulldst = next_p - cur_p, cnt = x265_gop_ra_length[fulldst - 2] - 1; i < cnt && cost < threshold; i++)
+                    cost += estGroup.singleCost(cur_p + x265_gop_cost_tbl[fulldst - 2][i].l,
+                                                cur_p + x265_gop_cost_tbl[fulldst - 2][i].r,
+                                                cur_p + x265_gop_cost_tbl[fulldst - 2][i].n);
+            }
+            else
+            {
+                int middle = cur_p + (next_p - cur_p) / 2;
+                cost += estGroup.singleCost(cur_p, next_p, middle);
 
-            for (int next_b = loc; next_b < middle && cost < threshold; next_b++)
-                cost += estGroup.singleCost(cur_p, middle, next_b);
+                for (int next_b = loc; next_b < middle && cost < threshold; next_b++)
+                    cost += estGroup.singleCost(cur_p, middle, next_b);
 
-            for (int next_b = middle + 1; next_b < next_p && cost < threshold; next_b++)
-                cost += estGroup.singleCost(middle, next_p, next_b);
+                for (int next_b = middle + 1; next_b < next_p && cost < threshold; next_b++)
+                    cost += estGroup.singleCost(middle, next_p, next_b);
+            }
         }
         else
         {

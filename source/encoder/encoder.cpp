@@ -4273,10 +4273,10 @@ void Encoder::configure(x265_param *p)
     {
         if (p->bEnableTemporalSubLayers > 3)
         {
-            if (p->bFrameBias < 100 || p->bFrameBias > 500)
+            if (p->bFrameBias < -90 || p->bFrameBias > 300)
             {
-                p->bFrameBias = X265_MIN(X265_MAX(100, p->bFrameBias), 500);
-                x265_log(p, X265_LOG_WARNING, "bframe-bias must higher than 100 and less than 500 when temporal sub-layers = 4 or 5!, Changed to %d.\n", p->bFrameBias);
+                p->bFrameBias = X265_MIN(X265_MAX(-90, p->bFrameBias), 300);
+                x265_log(p, X265_LOG_WARNING, "bframe-bias must higher than -90 and less than 300 when temporal sub-layers = 4 or 5!, Changed to %d.\n", p->bFrameBias);
             }
         }
         else

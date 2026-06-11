@@ -800,7 +800,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bframes = 15;
             param->bEnableTemporalSubLayers = 5;
             param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
-            param->bFrameBias = 200;
+            param->bFrameBias = 0;
             if (param->scenecutThreshold == 0)
                 param->scenecutThreshold = 40;
             param->keyframeMax = X265_MAX(param->keyframeMax, 64);
