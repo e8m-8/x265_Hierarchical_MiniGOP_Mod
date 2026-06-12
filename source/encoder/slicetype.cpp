@@ -1359,8 +1359,16 @@ void Lookahead::getEstimatedPictureCost(Frame *curFrame)
     case B_SLICE:
         if (l0poc >= 0)
         {
-            b = poc - l0poc;
-            p1 = b + l1poc - poc;
+            if ((!!m_param->bNondyadicH) && (curFrame->m_tempLayer == 1))
+            {
+                b = x265_gop_ra_fast[curFrame->m_gopId][curFrame->m_gopOffset].poc_offset;
+                p1 = x265_gop_ra_fast[curFrame->m_gopId][0].poc_offset;
+            }
+            else
+            {
+                b = poc - l0poc;
+                p1 = b + l1poc - poc;
+            }
             frames[p0] = &slice->m_refFrameList[0][0]->m_lowres;
             frames[b] = &curFrame->m_lowres;
             frames[p1] = &slice->m_refFrameList[1][0]->m_lowres;
@@ -2274,30 +2282,10 @@ void Lookahead::slicetypeDecide()
                     {
                         if (m_param->bNondyadicH == 1)
                         {
-                            int pts_lo = x265_gop_ra_fast[gopId][0].poc_offset;
-                            int pts_st = 0;
-                            int pts_ed = 0;
-                            for (int j = 1; j < x265_gop_ra_fast[gopId][0].poc_offset; j++)
-                            {
-                                if ((x265_gop_ra_fast[gopId][j].layer == 1) && (pts_lo > 3))
-                                {
-                                    estGroup.singleCost(0, pts_lo, x265_gop_ra_fast[gopId][j].poc_offset);
-                                    if (pts_ed < x265_gop_ra_fast[gopId][j].poc_offset)
-                                    {
-                                        pts_st = pts_ed;
-                                        pts_ed = x265_gop_ra_fast[gopId][j].poc_offset;
-                                    }
-                                }
-                                else
-                                {
-                                    if (pts_ed < x265_gop_ra_fast[gopId][j].poc_offset)
-                                    {
-                                        pts_st = pts_ed;
-                                        pts_ed = pts_lo;
-                                    }
-                                    estGroup.singleCost(pts_st, pts_ed, x265_gop_ra_fast[gopId][j].poc_offset);
-                                }
-                            }
+                            for (int i = 0, cnt = x265_gop_ra_length_fast[newbFrames - 1] - 1; i < cnt; i++)
+                                estGroup.singleCost(listReset + x265_gop_cost_fast_tbl[newbFrames - 1][i].l,
+                                                    listReset + x265_gop_cost_fast_tbl[newbFrames - 1][i].r,
+                                                    listReset + x265_gop_cost_fast_tbl[newbFrames - 1][i].n);
                         }
                         else
                         {
@@ -2463,30 +2451,10 @@ void Lookahead::slicetypeDecide()
 
                 if (m_param->bNondyadicH == 1)
                 {
-                    int pts_lo = x265_gop_ra_fast[m_gopId][0].poc_offset;
-                    int pts_st = 0;
-                    int pts_ed = 0;
-                    for (int j = 1; j < x265_gop_ra_fast[m_gopId][0].poc_offset; j++)
-                    {
-                        if (x265_gop_ra_fast[m_gopId][j].layer == 1)
-                        {
-                            estGroup.singleCost(0, pts_lo, x265_gop_ra_fast[m_gopId][j].poc_offset);
-                            if (pts_ed < x265_gop_ra_fast[m_gopId][j].poc_offset)
-                            {
-                                pts_st = pts_ed;
-                                pts_ed = x265_gop_ra_fast[m_gopId][j].poc_offset;
-                            }
-                        }
-                        else
-                        {
-                            if (pts_ed < x265_gop_ra_fast[m_gopId][j].poc_offset)
-                            {
-                                pts_st = pts_ed;
-                                pts_ed = pts_lo;
-                            }
-                            estGroup.singleCost(pts_st, pts_ed, x265_gop_ra_fast[m_gopId][j].poc_offset);
-                        }
-                    }
+                    for (int i = 0, cnt = x265_gop_ra_length_fast[bframes - 1] - 1; i < cnt; i++)
+                        estGroup.singleCost(x265_gop_cost_fast_tbl[bframes - 1][i].l,
+                                            x265_gop_cost_fast_tbl[bframes - 1][i].r,
+                                            x265_gop_cost_fast_tbl[bframes - 1][i].n);
                 }
                 else
                 {
