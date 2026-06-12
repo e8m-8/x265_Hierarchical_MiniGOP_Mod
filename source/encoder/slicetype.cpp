@@ -2228,45 +2228,13 @@ void Lookahead::slicetypeDecide()
                 {
                     if (m_param->bNondyadicH != 1)
                     {
-		                int sub_leftOver = leftOver;
-		                int sub_listReset = listReset;
-		                int8_t sub_gopId;
-		                switch (m_gopId)
-		                {
-		                case 2:
-		                    sub_gopId = 1; break;
-		                case 6:
-		                    sub_gopId = 2; break;
-		                case 14:
-		                    sub_gopId = 3; break;
-		                default:
-		                    break;
-		                }
-		                int sub_gopLen = x265_base_gop_ra_length[sub_gopId];
-						
-                        while ((sub_gopId >= 0) && (sub_leftOver > 1))
+                        for (int j = 1; j < gopLen; j++)
                         {
-                            if (sub_leftOver < sub_gopLen)
+                            if (x265_gop_ra[gopId][j].isNonBase < 2)
                             {
-                                sub_gopId = sub_gopId - 1;
-                                sub_gopLen = x265_base_gop_ra_length[sub_gopId];
-                                continue;
-                            }
-                            else
-                            {
-                                int sub_newbFrames = sub_listReset + sub_gopLen - 1;
-                                if (sub_newbFrames < newbFrames)
-                                {
-                                    list[sub_newbFrames]->m_lowres.sliceType = X265_TYPE_BREF;
-                                    brefs++;
-                                }
-
-                                placeBref(list, sub_listReset, sub_newbFrames, sub_newbFrames + 1, &brefs);
-
-                                sub_listReset += sub_gopLen;
-                                sub_leftOver = sub_leftOver - sub_gopLen;
-                                sub_gopId -= 1;
-                                sub_gopLen = (sub_gopId >= 0) ? x265_base_gop_ra_length[sub_gopId] : 0;
+                                int offset = listReset + x265_gop_ra[gopId][j].poc_offset - 1;
+                                list[offset]->m_lowres.sliceType = X265_TYPE_BREF;
+                                brefs++;
                             }
                         }
                     }
@@ -2361,7 +2329,7 @@ void Lookahead::slicetypeDecide()
                 list[newbFrames]->m_gopOffset = 0;
                 list[newbFrames]->m_gopId = gopId;
                 list[newbFrames]->m_qpLayer = m_param->bNondyadicH ? x265_gop_ra_fast[gopId][0].layer : x265_gop_ra[gopId][0].layer;
-                list[newbFrames]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[gopId][0].isNonBase : (m_param->bNondyadicH ? x265_gop_ra_fast[gopId][0].layer : x265_gop_ra[gopId][0].layer);
+                list[newbFrames]->m_tempLayer = m_param->bRefSublayer ? X265_MIN(1, x265_gop_ra[gopId][0].isNonBase) : (m_param->bNondyadicH ? x265_gop_ra_fast[gopId][0].layer : x265_gop_ra[gopId][0].layer);
 
                 m_outputQueue.pushBack(*list[newbFrames]);
 
@@ -2377,7 +2345,7 @@ void Lookahead::slicetypeDecide()
                     list[offset]->m_gopOffset = j;
                     list[offset]->m_gopId = gopId;
                     list[offset]->m_qpLayer = m_param->bNondyadicH ? x265_gop_ra_fast[gopId][j].layer : x265_gop_ra[gopId][j].layer;
-                    list[offset]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[gopId][j++].isNonBase : (m_param->bNondyadicH ? x265_gop_ra_fast[gopId][j++].layer : x265_gop_ra[gopId][j++].layer);
+                    list[offset]->m_tempLayer = m_param->bRefSublayer ? X265_MIN(1, x265_gop_ra[gopId][j++].isNonBase) : (m_param->bNondyadicH ? x265_gop_ra_fast[gopId][j++].layer : x265_gop_ra[gopId][j++].layer);
 
                     list[offset]->m_reorderedPts = pts[idx++];
                     m_outputQueue.pushBack(*list[offset]);
@@ -2463,7 +2431,15 @@ void Lookahead::slicetypeDecide()
                 }
                 else
                 {
-                    placeBref(list, 0, bframes, bframes + 1, &brefs);
+                    for (int j = 1; j < x265_gop_ra[m_gopId][0].poc_offset; j++)
+                    {
+                        if (x265_gop_ra[m_gopId][j].isNonBase < 2)
+                        {
+                            int offset = x265_gop_ra[m_gopId][j].poc_offset - 1;
+                            list[offset]->m_lowres.sliceType = X265_TYPE_BREF;
+                            brefs++;
+                        }
+                    }
                 }
             }
 
@@ -2543,7 +2519,7 @@ void Lookahead::slicetypeDecide()
             list[bframes]->m_gopOffset = 0;
             list[bframes]->m_gopId = m_gopId;
             list[bframes]->m_qpLayer = m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][0].layer : x265_gop_ra[m_gopId][0].layer;
-            list[bframes]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[m_gopId][0].isNonBase : (m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][0].layer : x265_gop_ra[m_gopId][0].layer);
+            list[bframes]->m_tempLayer = m_param->bRefSublayer ? X265_MIN(1, x265_gop_ra[m_gopId][0].isNonBase) : (m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][0].layer : x265_gop_ra[m_gopId][0].layer);
             m_outputQueue.pushBack(*list[bframes]);
 
             int i = 1, j = 1;
@@ -2557,7 +2533,7 @@ void Lookahead::slicetypeDecide()
                 list[offset]->m_gopOffset = j;
                 list[offset]->m_gopId = m_gopId;
                 list[offset]->m_qpLayer = m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][j].layer : x265_gop_ra[m_gopId][j].layer;
-                list[offset]->m_tempLayer = m_param->bRefSublayer ? x265_gop_ra[m_gopId][j++].isNonBase : (m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][j++].layer : x265_gop_ra[m_gopId][j++].layer);
+                list[offset]->m_tempLayer = m_param->bRefSublayer ? X265_MIN(1, x265_gop_ra[m_gopId][j++].isNonBase) : (m_param->bNondyadicH ? x265_gop_ra_fast[m_gopId][j++].layer : x265_gop_ra[m_gopId][j++].layer);
 
                 /* add B frames to output queue */
                 list[offset]->m_reorderedPts = pts[idx++];
