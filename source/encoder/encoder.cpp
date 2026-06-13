@@ -4209,17 +4209,17 @@ void Encoder::configure(x265_param *p)
                 p->bFrameAdaptive = 2;
             }
             x265_log(p, X265_LOG_INFO, "Trellis Adaptive B-frame placement in maximum. %d temporal sub-layers.\n", p->bEnableTemporalSubLayers);
-            if (p->lookaheadDepth < ((1 << (p->bEnableTemporalSubLayers)) + 4))
+            if (p->lookaheadDepth < (p->bframes + 1) * 2 + 4)
             {
-                p->lookaheadDepth = (1 << (p->bEnableTemporalSubLayers)) + 4;
+                p->lookaheadDepth = (p->bframes + 1) * 2 + 4;
                 x265_log(p, X265_LOG_WARNING, "For Adaptive maximum. %d temporal sub-layers, --rc-lookahead must higher than %d! Changed to %d.\n", p->bEnableTemporalSubLayers, p->lookaheadDepth, p->lookaheadDepth);
             }
         }
         else
         {
-            if (p->lookaheadDepth < x265_base_gop_ra_length[p->bEnableTemporalSubLayers - 1])
+            if (p->lookaheadDepth < p->bframes + 1)
             {
-                p->lookaheadDepth = x265_base_gop_ra_length[p->bEnableTemporalSubLayers - 1];
+                p->lookaheadDepth = p->bframes + 1;
                 x265_log(p, X265_LOG_WARNING, "For %d temporal sub-layers, --rc-lookahead must higher than %d! Changed to %d.\n", p->bEnableTemporalSubLayers, p->lookaheadDepth, p->lookaheadDepth);
             }
         }
@@ -4227,10 +4227,10 @@ void Encoder::configure(x265_param *p)
 
     if (p->bEnableTemporalSubLayers > 2)
     {
-        if (p->keyframeMax < (1 << (p->bEnableTemporalSubLayers + 1)))
+        if (p->keyframeMax < (p->bframes + 1) * 2)
         {
-            p->keyframeMax = (1 << (p->bEnableTemporalSubLayers + 1));
-            x265_log(p, X265_LOG_WARNING, "For %d temporal sub-layers, --keyint must higher than %d! Changed to %d.\n", p->bEnableTemporalSubLayers, p->keyframeMax, p->keyframeMax);
+            p->keyframeMax = (p->bframes + 1) * 2;
+            x265_log(p, X265_LOG_WARNING, "For %d temporal sub-layers and %d MiniGOPs, --keyint must higher than %d! Changed to %d.\n", p->bEnableTemporalSubLayers, p->bframes + 1, p->keyframeMax, p->keyframeMax);
         }
         if (p->scenecutThreshold == 0)
         {
