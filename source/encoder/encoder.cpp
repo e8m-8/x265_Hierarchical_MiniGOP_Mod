@@ -4201,11 +4201,11 @@ void Encoder::configure(x265_param *p)
 
     if (p->bEnableTemporalSubLayers > 2)
     {
-        if (p->bFrameAdaptive)
+        if (!!p->bFrameAdaptive)
         {
-            if (p->bFrameAdaptive == 1)
+            if (p->bFrameAdaptive != 2)
             {
-                x265_log(p, X265_LOG_WARNING, "Adaptive B-frame placement 1 is not supported when using %d temporal sub-layers. Changed to 2.\n", p->bEnableTemporalSubLayers);
+                x265_log(p, X265_LOG_WARNING, "Adaptive B-frame placement 1 / 3 is not supported when using %d temporal sub-layers. Changed to 2.\n", p->bEnableTemporalSubLayers);
                 p->bFrameAdaptive = 2;
             }
             x265_log(p, X265_LOG_INFO, "Trellis Adaptive B-frame placement in maximum. %d temporal sub-layers.\n", p->bEnableTemporalSubLayers);
@@ -4288,6 +4288,40 @@ void Encoder::configure(x265_param *p)
                     x265_log(p, X265_LOG_WARNING, "bframe-bias must higher than -90 and less than 100 when temporal sub-layers = 2 or 3! Changed to %d.\n", p->bFrameBias);
                 else
                     x265_log(p, X265_LOG_WARNING, "bframe-bias must higher than -90 and less than 100 when disable temporal sub-layers! Changed to %d.\n", p->bFrameBias);
+            }
+        }
+    }
+
+    if (p->bFrameAdaptive == X265_B_ADAPT_AUTO)
+    {
+        if (!!p->bAQMotion)
+        {
+            p->bAQMotion = 0;
+            x265_log(p, X265_LOG_WARNING, "when --b-adapt = 3, Changed --aq-motion to disabled.\n");
+        }
+        if (p->bEnableTemporalSubLayers > 1)
+        {
+            p->bFrameAdaptive = 2;
+            x265_log(p, X265_LOG_WARNING, "When temporal sub-layers > 1, --b-adapt can't be 3. Changed to %d.\n", p->bFrameAdaptive);
+        }
+        else if (!p->bBPyramid)
+        {
+            p->bFrameAdaptive = 2;
+            x265_log(p, X265_LOG_WARNING, "--b-adapt = 3 can not enabled without b-pyramid. Changed to %d.\n", p->bFrameAdaptive);
+        }
+        else
+        {
+            if (p->bframes > 12)
+                x265_log(p, X265_LOG_WARNING, "--b-adapt = 3 is not recommended for bframes higher than 12 cause of the high cost.\n");
+            else
+            {
+                if (p->bframes < 2)
+                {
+                    p->bframes = 2;
+                    x265_log(p, X265_LOG_WARNING, "--b-adapt = 3 is useless when --bframes < 2. Changed --bframes to %d.\n", p->bframes);
+                }
+                else
+                    x265_log(p, X265_LOG_INFO, "--b-adapt 3 is enabled for adaptive reference B-frame insertion.\n");
             }
         }
     }

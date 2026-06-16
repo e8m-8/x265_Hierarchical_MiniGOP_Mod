@@ -209,11 +209,14 @@ namespace X265_NS {
 			"                                   When --temporal-layers < 4 : [-90, 100]\n"
 			"                                   When --temporal-layers > 3 : [-90, 300]\n"
 			"                                   Default %d\n", param->bFrameBias);
-        H0("   --b-adapt <0..2>              Adaptive B frame scheduling. Default %d\n"
+        H0("   --b-adapt <0..3>              Adaptive B frame scheduling. Default %d\n"
 			"                                   When --temporal-layers > 2, mode 1 is not applicable.\n"
 			"                                   - 0 : none, the GOP structure is fixed based on the values of --keyint and --bframes.\n"
 			"                                   - 1 : fast, light lookahead is used to choose B frame placement.\n"
-			"                                   - 2 : full (trellis), a viterbi B path selection is performed.\n", param->bFrameAdaptive);
+			"                                   - 2 : full (trellis), a viterbi B path selection is performed.\n"
+			"                                   - 3 : auto, a viterbi B path selection with minimum cost based adaptive reference B-frame insertion.\n"
+            "                                         This requires enabled b-pyramid. It comes at a significant cost.\n"
+            "                                         Not recommended for bframes > 12.\n", param->bFrameAdaptive);
         H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
         H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
         H1("                                 Format of each line: framenumber frametype QP\n");

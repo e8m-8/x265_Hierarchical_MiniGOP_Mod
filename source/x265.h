@@ -575,6 +575,7 @@ typedef enum
 #define X265_B_ADAPT_NONE       0
 #define X265_B_ADAPT_FAST       1
 #define X265_B_ADAPT_TRELLIS    2
+#define X265_B_ADAPT_AUTO       3
 
 #define X265_REF_LIMIT_DEPTH    1
 #define X265_REF_LIMIT_CU       2
@@ -1165,7 +1166,9 @@ typedef struct x265_param
     /* Sets the operating mode of the lookahead.  With b-adapt 0, the GOP
      * structure is fixed based on the values of keyframeMax and bframes.
      * With b-adapt 1 a light lookahead is used to chose B frame placement.
-     * With b-adapt 2 (trellis) a viterbi B path selection is performed */
+     * With b-adapt 2 (trellis) a viterbi B path selection is performed.
+     * With b-adapt 3 (auto) a viterbi B path selection with adaptive
+     * reference B-frame insertion according to the minimal cost. */
     int       bFrameAdaptive;
 
     /* When enabled, the encoder will use the B frame in the middle of each
