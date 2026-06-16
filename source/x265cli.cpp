@@ -302,10 +302,12 @@ namespace X265_NS {
         H0("   --ipratio <float>             QP factor between I and P. Default %.2f\n", param->rc.ipFactor);
         H0("   --pbratio <float>             QP factor between P and B. Default %.2f\n", param->rc.pbFactor);
         H0("   --bbratio <float>             QP factor for Hierarchical B-Slices, between upper layer B and lower layer B. Default %.2f\n"
+            "                                   When temporal-layers disabled and b-adapt=3, between reference B and non-reference B.\n"
             "                                   Use ':' to separate the independent QP factor for each layer.\n"
-            "                                   For example: %.2f:%.2f      (--temporal-layers = 4 default),\n"
+            "                                   For example: %.2f           (--b-adapt = 3 default),\n"
+            "                                                %.2f:%.2f      (--temporal-layers = 4 default),\n"
             "                                                %.2f:%.2f:%.2f (--temporal-layers = 5 default).\n"
-            "                                                1.10 means 1.10:1.10:1.10 when --temporal-layers = 5.\n", param->rc.bbFactor[0], param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2]);
+            "                                                single 1.10 means 1.10:1.10:1.10 when --temporal-layers = 5.\n", param->rc.bbFactor[0], param->rc.bbFactor[0], param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2]);
         H1("   --qcomp <float>               Weight given to predicted complexity. Default %.2f\n", param->rc.qCompress);
         H1("   --qpstep <integer>            The maximum single adjustment in QP allowed to rate control. Default %d\n", param->rc.qpStep);
         H1("   --qpmin <integer>             sets a hard lower limit on QP allowed to ratecontrol. Default %d\n", param->rc.qpMin);
@@ -392,7 +394,7 @@ namespace X265_NS {
         H0("   --temporal-layers             Enable by specifying number of [2, 5]. Default %s\n"
             "                                   - 2 : all reference frames in the base layer and non-reference frames in the enhancement layer,\n"
             "                                         without any constraint on the number of B-frames.\n"
-            "                                   - 3 : 3-frame Hierarchical B-frame or 8-frame Nondyadic Hierarchical B-frame implementation .\n"
+            "                                   - 3 : 3-frame Hierarchical B-frame or 8-frame Nondyadic Hierarchical B-frame implementation.\n"
             "                                         1P - 1B - 2b miniGOP 4-frame structure, with 3 temporal layers.\n"
             "                                         1P - 2B - 6b miniGOP 9-frame structure, with 3 temporal layers.\n"
             "                                   - 4 : 7-frame Hierarchical B-frame implementation.\n"

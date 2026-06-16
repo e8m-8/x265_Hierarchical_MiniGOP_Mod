@@ -305,9 +305,9 @@ void x265_param_default(x265_param* param)
     param->rc.qCompress = 0.6;
     param->rc.ipFactor = 1.4f;
     param->rc.pbFactor = 1.3f;
-    param->rc.bbFactor[0] = 1.2f;
-    param->rc.bbFactor[1] = 1.1f;
-    param->rc.bbFactor[2] = 1.0f;
+    param->rc.bbFactor[0] = 0.8f;
+    param->rc.bbFactor[1] = 1.3f;
+    param->rc.bbFactor[2] = 0.9f;
     param->rc.qpStep = 4;
     param->rc.rateControlMode = X265_RC_CRF;
     param->rc.qp = 32;
@@ -2284,6 +2284,10 @@ void x265_print_params(x265_param* param)
         switch (param->bEnableTemporalSubLayers)
         {
         case 0:
+            if (param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+            {
+                x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0]); break;
+            }
         case 1:
         case 2:
             x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio                   : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor); break;
@@ -2542,7 +2546,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
         if (p->bframes)
         {
             s += snprintf(s, bufSize - (s - buf), " pbratio=%.2f", p->rc.pbFactor);
-            if (p->bEnableTemporalSubLayers > 2)
+            if (p->bEnableTemporalSubLayers > 2 || p->bFrameAdaptive == X265_B_ADAPT_AUTO)
             {
                 s += snprintf(s, bufSize - (s - buf), " bbratio=%.2f", p->rc.bbFactor[0]);
                 if (p->bEnableTemporalSubLayers > 3)

@@ -2645,6 +2645,8 @@ void Lookahead::slicetypeDecide()
                 if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
                 {
                     list[i]->m_reorderedPts = pts[idx++];
+                    if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+                        list[i]->m_qpLayer = 1;
                     m_outputQueue.pushBack(*list[i]);
                 }
             }
@@ -2657,6 +2659,8 @@ void Lookahead::slicetypeDecide()
             if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
             {
                 list[i]->m_reorderedPts = pts[idx++];
+                if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+                    list[i]->m_qpLayer = 2;
                 m_outputQueue.pushBack(*list[i]);
             }
         }
