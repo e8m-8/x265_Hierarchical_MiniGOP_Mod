@@ -2234,14 +2234,14 @@ void Lookahead::slicetypeDecide()
                 /* insert a bref into the sequence */
                 if (m_param->bBPyramid && newbFrames)
                 {
-                    if (m_param->bNondyadicH != 1)
+                    if (m_param->bNondyadicH == 1)
                     {
                         for (int j = 1; j < gopLen; j++)
                         {
-                            if (x265_gop_ra[gopId][j].isNonBase < 2)
+                            if (x265_gop_ra_fast[gopId][j].isNonBase == 0)
                             {
-                                int offset = listReset + x265_gop_ra[gopId][j].poc_offset - 1;
-                                list[offset]->m_lowres.sliceType = X265_TYPE_BREF;
+		                        int offset = listReset + x265_gop_ra_fast[gopId][j].poc_offset - 1;
+		                        list[offset]->m_lowres.sliceType = X265_TYPE_BREF;
                                 brefs++;
                             }
                         }
@@ -2250,10 +2250,10 @@ void Lookahead::slicetypeDecide()
                     {
                         for (int j = 1; j < gopLen; j++)
                         {
-                            if (x265_gop_ra_fast[gopId][j].isNonBase == 0)
+                            if (x265_gop_ra[gopId][j].isNonBase < 2)
                             {
-		                        int offset = listReset + x265_gop_ra_fast[gopId][j].poc_offset - 1;
-		                        list[offset]->m_lowres.sliceType = X265_TYPE_BREF;
+                                int offset = listReset + x265_gop_ra[gopId][j].poc_offset - 1;
+                                list[offset]->m_lowres.sliceType = X265_TYPE_BREF;
                                 brefs++;
                             }
                         }
@@ -2282,17 +2282,17 @@ void Lookahead::slicetypeDecide()
                     {
                         if (m_param->bNondyadicH == 1)
                         {
-                            for (int i = 0, cnt = x265_gop_ra_length_fast[newbFrames - 1] - 1; i < cnt; i++)
-                                estGroup.singleCost(listReset + x265_gop_cost_fast_tbl[newbFrames - 1][i].l,
-                                                    listReset + x265_gop_cost_fast_tbl[newbFrames - 1][i].r,
-                                                    listReset + x265_gop_cost_fast_tbl[newbFrames - 1][i].n);
+                            for (int i = 0, bidx = newbFrames - 1; i < newbFrames; i++)
+                                estGroup.singleCost(listReset + x265_gop_cost_fast_tbl[bidx][i].l,
+                                                    listReset + x265_gop_cost_fast_tbl[bidx][i].r,
+                                                    listReset + x265_gop_cost_fast_tbl[bidx][i].n);
                         }
                         else
                         {
-                            for (int i = 0, cnt = x265_gop_ra_length[newbFrames - 1] - 1; i < cnt; i++)
-                                estGroup.singleCost(listReset + x265_gop_cost_tbl[newbFrames - 1][i].l,
-                                                    listReset + x265_gop_cost_tbl[newbFrames - 1][i].r,
-                                                    listReset + x265_gop_cost_tbl[newbFrames - 1][i].n);
+                            for (int i = 0, bidx = newbFrames - 1; i < newbFrames; i++)
+                                estGroup.singleCost(listReset + x265_gop_cost_tbl[bidx][i].l,
+                                                    listReset + x265_gop_cost_tbl[bidx][i].r,
+                                                    listReset + x265_gop_cost_tbl[bidx][i].n);
                         }
                     }
                 }
@@ -2451,17 +2451,17 @@ void Lookahead::slicetypeDecide()
 
                 if (m_param->bNondyadicH == 1)
                 {
-                    for (int i = 0, cnt = x265_gop_ra_length_fast[bframes - 1] - 1; i < cnt; i++)
-                        estGroup.singleCost(x265_gop_cost_fast_tbl[bframes - 1][i].l,
-                                            x265_gop_cost_fast_tbl[bframes - 1][i].r,
-                                            x265_gop_cost_fast_tbl[bframes - 1][i].n);
+                    for (int i = 0, bidx = bframes - 1; i < bframes; i++)
+                        estGroup.singleCost(x265_gop_cost_fast_tbl[bidx][i].l,
+                                            x265_gop_cost_fast_tbl[bidx][i].r,
+                                            x265_gop_cost_fast_tbl[bidx][i].n);
                 }
                 else
                 {
-                    for (int i = 0, cnt = x265_gop_ra_length[bframes - 1] - 1; i < cnt; i++)
-                        estGroup.singleCost(x265_gop_cost_tbl[bframes - 1][i].l,
-                                            x265_gop_cost_tbl[bframes - 1][i].r,
-                                            x265_gop_cost_tbl[bframes - 1][i].n);
+                    for (int i = 0, bidx = bframes - 1; i < bframes; i++)
+                        estGroup.singleCost(x265_gop_cost_tbl[bidx][i].l,
+                                            x265_gop_cost_tbl[bidx][i].r,
+                                            x265_gop_cost_tbl[bidx][i].n);
                 }
             }
 
@@ -2709,7 +2709,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
     int nextNonB = keyframe ? prevNonB : curNonB;
     int nextB = prevNonB + 1;
     int nextBRef = 0, curBRef = 0;
-    if (m_param->bBPyramid && curNonB - prevNonB > 1)
+    if (m_param->bBPyramid && curNonB - prevNonB > 1 && m_param->bEnableTemporalSubLayers < 3)
     {
         if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
         {
@@ -2746,55 +2746,162 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
         }
 
         /* Handle the B-frames: coded order */
-        if (m_param->bBPyramid && curNonB - prevNonB > 1)
+        if (m_param->bEnableTemporalSubLayers > 2)
         {
-            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+            int curMiniGopIdx = miniGopEnd - 2;
+            
+            if (m_param->bNondyadicH == 1)
             {
-				nextBRef = curNonB;
-				
-                for (int i = prevNonB + 1; i < curNonB; i++)
-                    if (frames[i]->sliceType == X265_TYPE_BREF)
-                    {
-                        nextBRef = i;
-                        break;
-                    }
-            }
-            else
-                nextBRef = (prevNonB + curNonB + 1) / 2;
-        }
-
-        for (int i = prevNonB + 1; i < curNonB; i++, idx++)
-        {
-            int64_t satdCost = 0;
-            int type = X265_TYPE_B;
-            if (nextBRef)
-            {
-                if (i == nextBRef)
+                for (int i = 0, bidx = curNonB - prevNonB - 2; i < bidx + 1; i++, idx++)
                 {
-                    satdCost = vbvFrameCost(frames, prevNonB, curNonB, nextBRef);
-                    type = X265_TYPE_BREF;
+                    int type = (!x265_gop_ra_fast[bidx][i + 1].isNonBase) ? X265_TYPE_BREF : X265_TYPE_B;
+                    int offset_l = x265_gop_cost_fast_tbl[bidx][i].l;
+                    int offset_r = x265_gop_cost_fast_tbl[bidx][i].r;
+                    int offset_n = x265_gop_cost_fast_tbl[bidx][i].n;
+                    int layer_id = x265_gop_ra_fast[bidx][i + 1].layer;
+                    
+                    int64_t satdCost = vbvFrameCost(frames, prevNonB + offset_l,
+                                                            prevNonB + offset_r,
+                                                            prevNonB + offset_n);
+                    
+                    frames[nextNonB]->plannedSatd[idx] = satdCost;
+                    frames[nextNonB]->plannedType[idx] = type;
+                    
+                    for (int j = nextB; j < miniGopEnd; j++)
+                    {
+                        int poc_offset = x265_gop_ra_fast[curMiniGopIdx][j].poc_offset;
+                        int poc_layer = x265_gop_ra_fast[curMiniGopIdx][j].layer;
+                        
+                        if (curNonB <= miniGopEnd)
+                        {
+                            if (poc_offset == offset_n)
+                                continue;
+                            
+                            if (poc_layer == layer_id)
+                            {
+                                if (!!x265_gop_ra_fast[curMiniGopIdx][j].isNonBase && poc_offset >= offset_n)
+                                    continue;
+                            }
+                            else if (poc_layer > layer_id)
+                            {
+                                if (x265_gop_cost_fast_tbl[curMiniGopIdx][j - 1].l > offset_n || x265_gop_cost_fast_tbl[curMiniGopIdx][j - 1].r < offset_n)
+                                    continue;
+                            }
+                            else if (offset_r < poc_offset)
+                            {
+                                    continue;
+                            }
+                        }
+                        
+                        frames[poc_offset]->plannedSatd[frames[poc_offset]->indB] = satdCost;
+                        frames[poc_offset]->plannedType[frames[poc_offset]->indB++] = type;
+                    }
                 }
-                else if (i < nextBRef)
-                    satdCost = vbvFrameCost(frames, prevNonB, nextBRef, i);
-                else
-                    satdCost = vbvFrameCost(frames, nextBRef, curNonB, i);
             }
             else
-                satdCost = vbvFrameCost(frames, prevNonB, curNonB, i);
-            frames[nextNonB]->plannedSatd[idx] = satdCost;
-            frames[nextNonB]->plannedType[idx] = type;
-            /* Save the nextB Cost in each B frame of the current miniGop */
-
-            for (int j = nextB; j < miniGopEnd; j++)
             {
-                if (curBRef && curBRef == i)
-                    break;
-                if (j >= i && j !=nextBRef)
-                    continue;
-                frames[j]->plannedSatd[frames[j]->indB] = satdCost;
-                frames[j]->plannedType[frames[j]->indB++] = type;
+                for (int i = 0, bidx = curNonB - prevNonB - 2; i < bidx + 1; i++, idx++)
+                {
+                    int type = (x265_gop_ra[bidx][i + 1].isNonBase < 2) ? X265_TYPE_BREF : X265_TYPE_B;
+                    int offset_l = x265_gop_cost_tbl[bidx][i].l;
+                    int offset_r = x265_gop_cost_tbl[bidx][i].r;
+                    int offset_n = x265_gop_cost_tbl[bidx][i].n;
+                    int layer_id = x265_gop_ra[bidx][i + 1].layer;
+                    
+                    int64_t satdCost = vbvFrameCost(frames, prevNonB + offset_l,
+                                                            prevNonB + offset_r,
+                                                            prevNonB + offset_n);
+                    
+                    frames[nextNonB]->plannedSatd[idx] = satdCost;
+                    frames[nextNonB]->plannedType[idx] = type;
+                    
+                    for (int j = nextB; j < miniGopEnd; j++)
+                    {
+                        int poc_offset = x265_gop_ra[curMiniGopIdx][j].poc_offset;
+                        
+                        if (curNonB <= miniGopEnd)
+                        {
+                            if (poc_offset == offset_n)
+                                continue;
+                            
+                            if (x265_gop_ra[curMiniGopIdx][j].layer > layer_id)
+                            {
+                                if (poc_offset <= offset_l || poc_offset >= offset_r)
+                                    continue;
+                            }
+                            else
+                            {
+                                if (x265_gop_ra[curMiniGopIdx][j].isNonBase == 2)
+                                {
+                                    if (poc_offset >= offset_n)
+                                        continue;
+                                }
+                                else if (x265_gop_cost_tbl[curMiniGopIdx][j - 1].l >= offset_n)
+                                {
+                                        continue;
+                                }
+                            }
+                        }
+                        
+                        frames[poc_offset]->plannedSatd[frames[poc_offset]->indB] = satdCost;
+                        frames[poc_offset]->plannedType[frames[poc_offset]->indB++] = type;
+                    }
+                }
             }
         }
+        else
+        {
+            if (m_param->bBPyramid && curNonB - prevNonB > 1)
+            {
+                if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+                {
+                    nextBRef = curNonB;
+                    
+                    for (int i = prevNonB + 1; i < curNonB; i++)
+                        if (frames[i]->sliceType == X265_TYPE_BREF)
+                        {
+                            nextBRef = i;
+                            break;
+                        }
+                }
+                else
+                    nextBRef = (prevNonB + curNonB + 1) / 2;
+            }
+
+            for (int i = prevNonB + 1; i < curNonB; i++, idx++)
+            {
+                int64_t satdCost = 0;
+                int type = X265_TYPE_B;
+                if (nextBRef)
+                {
+                    if (i == nextBRef)
+                    {
+                        satdCost = vbvFrameCost(frames, prevNonB, curNonB, nextBRef);
+                        type = X265_TYPE_BREF;
+                    }
+                    else if (i < nextBRef)
+                        satdCost = vbvFrameCost(frames, prevNonB, nextBRef, i);
+                    else
+                        satdCost = vbvFrameCost(frames, nextBRef, curNonB, i);
+                }
+                else
+                    satdCost = vbvFrameCost(frames, prevNonB, curNonB, i);
+                frames[nextNonB]->plannedSatd[idx] = satdCost;
+                frames[nextNonB]->plannedType[idx] = type;
+                /* Save the nextB Cost in each B frame of the current miniGop */
+
+                for (int j = nextB; j < miniGopEnd; j++)
+                {
+                    if (curBRef && curBRef == i)
+                        break;
+                    if (j >= i && j !=nextBRef)
+                        continue;
+                    frames[j]->plannedSatd[frames[j]->indB] = satdCost;
+                    frames[j]->plannedType[frames[j]->indB++] = type;
+                }
+            }
+        }
+        
         prevNonB = curNonB;
         curNonB++;
         while (curNonB <= numFrames && IS_X265_TYPE_B(frames[curNonB]->sliceType))
@@ -3538,10 +3645,10 @@ int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t thresh
         {
             if (m_param->bEnableTemporalSubLayers > 2)
             {
-                for (int i = 0, fulldst = next_p - cur_p, cnt = x265_gop_ra_length[fulldst - 2] - 1; i < cnt && cost < threshold; i++)
-                    cost += estGroup.singleCost(cur_p + x265_gop_cost_tbl[fulldst - 2][i].l,
-                                                cur_p + x265_gop_cost_tbl[fulldst - 2][i].r,
-                                                cur_p + x265_gop_cost_tbl[fulldst - 2][i].n);
+                for (int i = 0, dst = next_p - cur_p - 2; i <= dst && cost < threshold; i++)
+                    cost += estGroup.singleCost(cur_p + x265_gop_cost_tbl[dst][i].l,
+                                                cur_p + x265_gop_cost_tbl[dst][i].r,
+                                                cur_p + x265_gop_cost_tbl[dst][i].n);
             }
             else
             {
@@ -3755,18 +3862,94 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
         bframes = lastnonb - curnonb - 1;
         if (m_param->bBPyramid && bframes > 1)
         {
-            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+            if (m_param->bEnableTemporalSubLayers > 2)
             {
-                int middle = -1;
-                for (int id = curnonb + 1; id < lastnonb; id++)
-                    if (frames[id]->sliceType == X265_TYPE_BREF)
-                    {
-                        middle = id;
-                        break;
-                    }
-				
-                if (middle > -1)
+                int bidx = bframes - 1;
+                if (m_param->bNondyadicH == 1)
                 {
+                    for (int j = 0; j <= bidx; j++)
+                    {
+                        estGroup.singleCost(
+                            curnonb + x265_gop_cost_fast_tbl[bidx][j].l,
+                            curnonb + x265_gop_cost_fast_tbl[bidx][j].r,
+                            curnonb + x265_gop_cost_fast_tbl[bidx][j].n);
+                        
+                        if (x265_gop_ra_fast[bidx][j + 1].isNonBase == 0)
+                            memset(frames[curnonb + x265_gop_ra_fast[bidx][j + 1].poc_offset]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
+                    }
+                    for (int j = bidx; j >= 0; j--)
+                    {
+                        estimateCUPropagate(frames, averageDuration, 
+                            curnonb + x265_gop_cost_fast_tbl[bidx][j].l,
+                            curnonb + x265_gop_cost_fast_tbl[bidx][j].r,
+                            curnonb + x265_gop_cost_fast_tbl[bidx][j].n,
+                            x265_gop_ra_fast[bidx][j + 1].isNonBase == 0);
+                    }
+                }
+                else
+                {
+                    for (int j = 0; j <= bidx; j++)
+                    {
+                        estGroup.singleCost(
+                            curnonb + x265_gop_cost_tbl[bidx][j].l,
+                            curnonb + x265_gop_cost_tbl[bidx][j].r,
+                            curnonb + x265_gop_cost_tbl[bidx][j].n);
+
+                        if (x265_gop_ra[bidx][j + 1].isNonBase < 2)
+                            memset(frames[curnonb + x265_gop_ra[bidx][j + 1].poc_offset]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
+                    }
+                    for (int j = bidx; j >= 0; j--)
+                    {
+                        estimateCUPropagate(frames, averageDuration,
+                            curnonb + x265_gop_cost_tbl[bidx][j].l,
+                            curnonb + x265_gop_cost_tbl[bidx][j].r,
+                            curnonb + x265_gop_cost_tbl[bidx][j].n,
+                            x265_gop_ra[bidx][j + 1].isNonBase < 2);
+                    }
+                }
+                i = curnonb;
+            }
+            else
+            {
+                if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+                {
+                    int middle = -1;
+                    for (int id = curnonb + 1; id < lastnonb; id++)
+                        if (frames[id]->sliceType == X265_TYPE_BREF)
+                        {
+                            middle = id;
+                            break;
+                        }
+                    
+                    if (middle > -1)
+                    {
+                        estGroup.singleCost(curnonb, lastnonb, middle);
+                        memset(frames[middle]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
+                        while (i > curnonb)
+                        {
+                            int p0 = i > middle ? middle : curnonb;
+                            int p1 = i < middle ? middle : lastnonb;
+                            if (i != middle)
+                            {
+                                estGroup.singleCost(p0, p1, i);
+                                estimateCUPropagate(frames, averageDuration, p0, p1, i, 0);
+                            }
+                            i--;
+                        }
+
+                        estimateCUPropagate(frames, averageDuration, curnonb, lastnonb, middle, 1);
+                    }
+                    else
+                        while (i > curnonb)
+                        {
+                            estGroup.singleCost(curnonb, lastnonb, i);
+                            estimateCUPropagate(frames, averageDuration, curnonb, lastnonb, i, 0);
+                            i--;
+                        }
+                }
+                else
+                {
+                    int middle = (bframes + 1) / 2 + curnonb;
                     estGroup.singleCost(curnonb, lastnonb, middle);
                     memset(frames[middle]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
                     while (i > curnonb)
@@ -3783,32 +3966,6 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
 
                     estimateCUPropagate(frames, averageDuration, curnonb, lastnonb, middle, 1);
                 }
-                else
-                    while (i > curnonb)
-                    {
-                        estGroup.singleCost(curnonb, lastnonb, i);
-                        estimateCUPropagate(frames, averageDuration, curnonb, lastnonb, i, 0);
-                        i--;
-                    }
-            }
-            else
-            {
-                int middle = (bframes + 1) / 2 + curnonb;
-                estGroup.singleCost(curnonb, lastnonb, middle);
-                memset(frames[middle]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
-                while (i > curnonb)
-                {
-                    int p0 = i > middle ? middle : curnonb;
-                    int p1 = i < middle ? middle : lastnonb;
-                    if (i != middle)
-                    {
-                        estGroup.singleCost(p0, p1, i);
-                        estimateCUPropagate(frames, averageDuration, p0, p1, i, 0);
-                    }
-                    i--;
-                }
-
-                estimateCUPropagate(frames, averageDuration, curnonb, lastnonb, middle, 1);
             }
         }
         else
@@ -3834,17 +3991,35 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
     cuTreeFinish(frames[lastnonb], averageDuration, lastnonb);
     if (m_param->bBPyramid && bframes > 1 && !m_param->rc.vbvBufferSize)
     {
-        if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+        if (m_param->bEnableTemporalSubLayers > 2)
         {
-            for (int id = 1; id <= bframes; id++)
-                if (frames[lastnonb + id]->sliceType == X265_TYPE_BREF)
-                {
-                    cuTreeFinish(frames[lastnonb + id], averageDuration, 0);
-                    break;
-                }
+            if (m_param->bNondyadicH == 1)
+            {
+                for (int j = bframes, bidx = bframes - 1; j >= 1; j--)
+                    if (x265_gop_ra_fast[bidx][j].isNonBase == 0)
+                        cuTreeFinish(frames[lastnonb + x265_gop_ra_fast[bidx][j].poc_offset], averageDuration, 0);
+            }
+            else
+            {
+                for (int j = bframes, bidx = bframes - 1; j >= 1; j--)
+                    if (x265_gop_ra[bidx][j].isNonBase < 2)
+                        cuTreeFinish(frames[lastnonb + x265_gop_ra[bidx][j].poc_offset], averageDuration, 0);
+            }
         }
         else
-            cuTreeFinish(frames[lastnonb + (bframes + 1) / 2], averageDuration, 0);
+        {
+            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+            {
+                for (int id = 1; id <= bframes; id++)
+                    if (frames[lastnonb + id]->sliceType == X265_TYPE_BREF)
+                    {
+                        cuTreeFinish(frames[lastnonb + id], averageDuration, 0);
+                        break;
+                    }
+            }
+            else
+                cuTreeFinish(frames[lastnonb + (bframes + 1) / 2], averageDuration, 0);
+        }
     }
 }
 
