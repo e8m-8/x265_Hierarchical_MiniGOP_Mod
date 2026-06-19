@@ -8,37 +8,44 @@ Primary objectives: Adjusting the inter-layer quantisation ratio to achieve bett
 Usage
 ======
 
-0. Non-Dyadic MiniGOP (b-slice frames: 8, 1P-2B-6b):
+1. b-adapt=3: a viterbi B path selection with adaptive reference B-frame insertion according to the minimal cost.
+
+   ``--b-adapt=3``
+
+   
+3. Non-Dyadic MiniGOP (b-slice frames: 8, 1P-2B-6b):
 
    ``--temporal-layers=3 --bframes=8``
    or
    ``--tune="minigop9nd"``
 
    
-2. Adaptive MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
+4. Adaptive MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
    
-   ``--temporal-layers=5 --b-adapt 2 --bframe-bias=150``
+   ``--temporal-layers=5 --b-adapt 2 --bframe-bias=0``
    or
    ``--tune="adaptminigop"``
 
-   When ``--temporal-layers > 3`` , --bframe-bias should in the range of  [100, 500].
+   When ``--temporal-layers > 3`` , --bframe-bias should in the range of  [-90, 300].
 
    
-3. BB-ratio rate-control, using ':' to separate the independent factor like ``--pbratio`` for each layer:
+5. BB-ratio rate-control, using ':' to separate the independent factor like ``--pbratio`` for each layer or Ref to Non-Ref B-Frame:
 
    ``--bbratio=1.6:1.4:1.2`` for ``--temporal-layers = 5``.
    
    ``--bbratio=1.3:1.1`` means Layer-1 / Layer-2 = 1.3, Layer-2 / Layer-3 = 1.2 for ``--temporal-layers = 4``.
    
-   ``--bbratio=1.2`` equals ``--bbratio=1.2:1.2:1.2`` for ``--temporal-layers = 5``.
+   ``--bbratio=1.2`` equals ``--bbratio=1.2:1.2:1.2`` for ``--temporal-layers = 5``
+
+   ``--bbratio=1.2`` also equals or QP of [Non-Ref B-Frame] = 1.2 * QP of [Ref B-Frame] for ``--b-adapt = 3``.
 
    Using ``--tune='minigop8'`` or ``--tune='minigop16'`` to quickly configure all settings by default.
 
-4. Updated bframes < minigop's fixed bframes mechanism of lookahead slice decision to improve efficiency. Had passed a lot of hardware decoding tests.
+7. Updated bframes < minigop's fixed bframes mechanism of lookahead slice decision to improve efficiency. Had passed a lot of hardware decoding tests.
   ![](Org.png)
   ![](Mod_MiniGOP.png) 
 
-5. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
+8. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
 
    **WARNING: Experimental feature**
    ![](Mod_MiniGOP_Bref.png)
