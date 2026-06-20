@@ -1011,7 +1011,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool)
      * batched; this will create one job per --bframe per lowres frame, and
      * these jobs are performed by workers bonded to the thread running
      * slicetypeDecide() */
-    m_bBatchMotionSearch = m_pool && (m_param->bFrameAdaptive == X265_B_ADAPT_TRELLIS || m_param->bFrameAdaptive == X265_B_ADAPT_AUTO);
+    m_bBatchMotionSearch = m_pool && (m_param->bFrameAdaptive >= 2);
 
     /* It is also beneficial to pre-calculate all possible frame cost estimates
      * using worker threads bonded to the worker thread running
@@ -2557,9 +2557,12 @@ void Lookahead::slicetypeDecide()
         {
             if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
             {
-                for (int i = 0; i <= bframes; i++)
+                for (int i = 0; i < bframes; i++)
                     if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
+                    {
                         brefs++;
+                        break;
+                    }
             }
             else
                 placeBref(list, 0, bframes, bframes + 1, &brefs);
@@ -3100,7 +3103,7 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
     }
     if (m_param->bframes)
     {
-        if (m_param->bFrameAdaptive == X265_B_ADAPT_TRELLIS || m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+        if (m_param->bFrameAdaptive >= 2)
         {
             if (numFrames > 1)
             {
