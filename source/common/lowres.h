@@ -171,6 +171,7 @@ struct Lowres : public ReferencePlanes
     int    width;            // width of lowres frame in pixels
     int    lines;            // height of lowres frame in pixel lines
     int    leadingBframes;   // number of leading B frames for P or I
+    uint8_t   m_tempLayer;   // Layer of the Hierarchical B-Frames
 
     bool   bScenecut;        // Set to false if the frame cannot possibly be part of a real scenecut.
     bool   bKeyframe;

@@ -149,6 +149,18 @@ protected:
     bool     allocWeightedRef(Lowres& fenc);
 };
 
+struct HierarchicalResult
+{
+    int64_t cost;
+    char path[X265_LOOKAHEAD_MAX + 1];
+
+    HierarchicalResult()
+    {
+        cost = 1LL << 62;
+        memset(path, 0, sizeof(path));
+    };
+};
+
 class Lookahead : public JobProvider
 {
 public:
@@ -247,7 +259,10 @@ protected:
 
     void    slicetypePath(Lowres **frames, int length, char(*best_paths)[X265_LOOKAHEAD_MAX + 1]);
     int64_t slicetypePathCost(Lowres **frames, char *path, int64_t threshold);
-    int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
+
+    HierarchicalResult slicetypeHierarchicalCost(Lowres** frames, int start, int end, int t_layer, int64_t threshold);
+
+	int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
     void    vbvLookahead(Lowres **frames, int numFrames, int keyframes);
     void    aqMotion(Lowres **frames, bool bintra);
     void    calcMotionAdaptiveQuantFrame(Lowres **frames, int p0, int p1, int b);
@@ -262,7 +277,11 @@ protected:
     int64_t frameCostRecalculate(Lowres **frames, int p0, int p1, int b);
     /*Compute index for positioning B-Ref frames*/
     void     placeBref(Frame** frames, int start, int end, int num, int *brefs);
+    void     estimateHierarchicalCUPropagate(Lowres **frames, double averageDuration, int start, int end, int t_layer);
     void     compCostBref(Lowres **frame, int start, int end, int num);
+    void     compHierarchicalCost(Lowres **frames, int start, int end, int t_layer);
+    void     vbvHierarchicalFrameCost(Lowres **frames, int start, int end, int nextNonB, int upR, int nextB, int miniGopEnd, int t_layer, int *idx);
+    void     pushbackHierarchicalFrames(Frame *list[X265_BFRAME_MAX + 4], int start, int end, int t_layer, int64_t (*pts)[X265_BFRAME_MAX + 1], int *idx, int *brefs);
 };
 
 class PreLookaheadGroup : public BondedTaskGroup

@@ -1011,7 +1011,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool)
      * batched; this will create one job per --bframe per lowres frame, and
      * these jobs are performed by workers bonded to the thread running
      * slicetypeDecide() */
-    m_bBatchMotionSearch = m_pool && (m_param->bFrameAdaptive >= 2);
+    m_bBatchMotionSearch = m_pool && (m_param->bFrameAdaptive >= X265_B_ADAPT_TRELLIS);
 
     /* It is also beneficial to pre-calculate all possible frame cost estimates
      * using worker threads bonded to the worker thread running
@@ -1792,6 +1792,46 @@ void Lookahead::placeBref(Frame** frames, int start, int end, int num, int *bref
     }
 }
 
+void Lookahead::pushbackHierarchicalFrames(Frame *list[X265_BFRAME_MAX + 4], int start, int end, int t_layer, int64_t (*pts)[X265_BFRAME_MAX + 1], int *idx, int *brefs)
+{
+    int ref = -1;
+    if (*brefs)
+        if (t_layer < m_param->bEnableTemporalSubLayers - 1 && end - start > 2)
+            for (int i = start + 1; i < end; i++)
+            {
+                if (list[i]->m_lowres.sliceType == X265_TYPE_BREF && list[i]->m_lowres.m_tempLayer == t_layer)
+                {
+                    list[i]->m_reorderedPts = *pts[(*idx)++];
+                    list[i]->m_tempLayer = t_layer;
+                    list[i]->m_qpLayer = t_layer;
+                    m_outputQueue.pushBack(*list[i]);
+                    ref = i;
+                    (*brefs)--;
+                    break;
+                }
+            }
+
+    if (ref > -1)
+    {
+        if (ref > start + 1)
+            pushbackHierarchicalFrames(list, start, ref, t_layer + 1, pts, idx, brefs);
+
+        if (ref < end - 1)
+            pushbackHierarchicalFrames(list, ref, end, t_layer + 1, pts, idx, brefs);
+    }
+    else
+    {
+        for (int i = start + 1; i < end; i++)
+        {
+            list[i]->m_reorderedPts = *pts[(*idx)++];
+            list[i]->m_tempLayer = t_layer;
+            list[i]->m_qpLayer = t_layer;
+            m_outputQueue.pushBack(*list[i]);
+        }
+    }
+
+    return;
+}
 
 void Lookahead::compCostBref(Lowres **frames, int start, int end, int num)
 {
@@ -1812,6 +1852,129 @@ void Lookahead::compCostBref(Lowres **frames, int start, int end, int num)
         compCostBref(frames, avg + 1, end, end - avg);
         return;
     }
+}
+
+void Lookahead::compHierarchicalCost(Lowres **frames, int start, int end, int t_layer)
+{
+    CostEstimateGroup estGroup(*this, frames);
+    int ref = -1;
+    if (t_layer < m_param->bEnableTemporalSubLayers - 1 && end - start > 2)
+        for (int i = start + 1; i < end; i++)
+            if (frames[i]->m_tempLayer == t_layer && frames[i]->sliceType == X265_TYPE_BREF)
+            {
+                ref = i;
+                break;
+            }
+
+    if (ref > -1)
+    {
+        estGroup.singleCost(start, end, ref);
+
+        if (ref > start + 1)
+            compHierarchicalCost(frames, start, ref, t_layer + 1);
+
+        if (ref < end - 1)
+            compHierarchicalCost(frames, ref, end, t_layer + 1);
+    }
+    else
+        for (int i = start + 1; i < end; i++)
+            estGroup.singleCost(start, end, i);
+
+    return;
+}
+
+void Lookahead::vbvHierarchicalFrameCost(Lowres **frames, int start, int end, int nextNonB, int upR ,int nextB, int miniGopEnd, int t_layer, int *idx)
+{
+    int ref = -1;
+    if (t_layer < m_param->bEnableTemporalSubLayers - 1 && end - start > 2)
+        for (int i = start + 1; i < end; i++)
+            if (frames[i]->m_tempLayer == t_layer && frames[i]->sliceType == X265_TYPE_BREF)
+            {
+                ref = i;
+                break;
+            }
+
+    if (ref > -1)
+    {
+        int64_t satdCost = vbvFrameCost(frames, start, end, ref);
+        int type = X265_TYPE_BREF;
+
+        frames[nextNonB]->plannedSatd[*idx] = satdCost;
+        frames[nextNonB]->plannedType[*idx] = type;
+        (*idx)++;
+
+        for (int j = nextB; j < miniGopEnd; j++)
+        {
+            if (end <= miniGopEnd)
+            {
+                if (frames[j]->m_tempLayer == t_layer)
+                {
+                    if (j >= ref)
+                        continue;
+                }
+                else if (frames[j]->m_tempLayer > t_layer)
+                {
+                    if (j <= start || j >= end)
+                        continue;
+                }
+                else
+                {
+                    if (frames[j]->m_tempLayer == 2 && j > end)
+                        continue;
+                }
+            }
+            frames[j]->plannedSatd[frames[j]->indB] = satdCost;
+            frames[j]->plannedType[frames[j]->indB++] = type;
+        }
+
+        if (ref > start + 1)
+            vbvHierarchicalFrameCost(frames, start, ref, nextNonB, end, nextB, miniGopEnd, t_layer + 1, idx);
+
+        if (ref < end - 1)
+            vbvHierarchicalFrameCost(frames, ref, end, nextNonB, end, nextB, miniGopEnd, t_layer + 1, idx);
+    }
+    else
+        for (int i = start + 1; i < end; i++, (*idx)++)
+        {
+            int64_t satdCost = vbvFrameCost(frames, start, end, i);
+            int type = X265_TYPE_B;
+
+            frames[nextNonB]->plannedSatd[*idx] = satdCost;
+            frames[nextNonB]->plannedType[*idx] = type;
+
+            for (int j = nextB; j < miniGopEnd; j++)
+            {
+                if (end <= miniGopEnd)
+                {
+                    if (frames[j]->m_tempLayer == t_layer)
+                    {
+                        if (j >= i)
+                            continue;
+                    }
+                    else if (frames[j]->m_tempLayer > t_layer)
+                    {
+                        if (j <= start || j >= end)
+                            continue;
+                    }
+                    else
+                    {
+                        if (frames[j]->m_tempLayer == t_layer - 1)
+                        {
+                            if (j > end)
+                                continue;
+                        }
+                        else if (frames[j]->m_tempLayer == 2 && j > upR)
+                        {
+                            continue;
+                        }
+                    }
+                }
+                frames[j]->plannedSatd[frames[j]->indB] = satdCost;
+                frames[j]->plannedType[frames[j]->indB++] = type;
+            }
+        }
+
+    return;
 }
 
 void CostEstimateGroup::estimatelowresmotion(MotionEstimatorTLD& m_metld, Frame* curframe, int refId)
@@ -2063,7 +2226,7 @@ void Lookahead::slicetypeDecide()
             /* pyramid with multiple B-refs needs a big enough dpb that the preceding P-frame stays available.
              * smaller dpb could be supported by smart enough use of mmco, but it's easier just to forbid it. */
             else if (frm.sliceType == X265_TYPE_BREF && m_param->bBPyramid && brefs &&
-                m_param->maxNumReferences <= (brefs + 3))
+                m_param->maxNumReferences <= (brefs + 3) && m_param->bFrameAdaptive != X265_B_ADAPT_AUTO_2)
             {
                 frm.sliceType = X265_TYPE_B;
                 x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid and %d reference frames\n",
@@ -2208,8 +2371,98 @@ void Lookahead::slicetypeDecide()
         m_bBatchMotionSearch &= m_pool->m_numWorkers >= 4;
         estGroup.finishBatch();
     }
+    
+    if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+    {
 
-    if (m_param->bEnableTemporalSubLayers > 2)
+        if (bframes)
+            list[bframes - 1]->m_lowres.bLastMiniGopBFrame = true;
+        list[bframes]->m_lowres.leadingBframes = bframes;
+        m_lastNonB = &list[bframes]->m_lowres;
+
+        /* insert a bref into the sequence */
+        if (m_param->bBPyramid && bframes > 1 && !brefs)
+            for (int i = 0; i < bframes; i++)
+                if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
+                    brefs++;
+
+        /* calculate the frame costs ahead of time for estimateFrameCost while we still have lowres */
+        if (m_param->rc.rateControlMode != X265_RC_CQP)
+        {
+            int p0, p1, b;
+            if (!maxSearch)
+                for (int i = 0; i <= bframes; i++)
+                    frames[i + 1] = &list[i]->m_lowres;
+
+            /* estimate new non-B cost */
+            p1 = b = bframes + 1;
+            p0 = (IS_X265_TYPE_I(frames[bframes + 1]->sliceType)) ? b : 0;
+
+            CostEstimateGroup estGroup(*this, frames);
+            estGroup.singleCost(p0, p1, b);
+
+            if (bframes)
+                compHierarchicalCost(frames, 0, bframes + 1, 1);
+        }
+
+        m_inputLock.acquire();
+        /* dequeue all frames from inputQueue that are about to be enqueued
+         * in the output queue. The order is important because Frame can
+         * only be in one list at a time */
+        int64_t pts[X265_BFRAME_MAX + 1];
+        for (int i = 0; i <= bframes; i++)
+        {
+            Frame *curFrame;
+            curFrame = m_inputQueue.popFront();
+            pts[i] = curFrame->m_pts;
+            maxSearch--;
+        }
+        m_inputLock.release();
+
+        m_outputLock.acquire();
+
+        /* add non-B to output queue */
+        int idx = 0;
+        list[bframes]->m_reorderedPts = pts[idx++];
+        m_outputQueue.pushBack(*list[bframes]);
+
+        /* add ref-B and non-ref-B to output queue */
+        pushbackHierarchicalFrames(list, -1, bframes, 1, &pts, &idx, &brefs);
+
+        bool isKeyFrameAnalyse = (m_param->rc.cuTree || (m_param->rc.vbvBufferSize && m_param->lookaheadDepth));
+        if (isKeyFrameAnalyse && IS_X265_TYPE_I(m_lastNonB->sliceType))
+        {
+            m_inputLock.acquire();
+            Frame *curFrame = m_inputQueue.first();
+            frames[0] = m_lastNonB;
+            int j;
+            for (j = 0; j < maxSearch; j++)
+            {
+                frames[j + 1] = &curFrame->m_lowres;
+                curFrame = curFrame->m_next;
+            }
+            m_inputLock.release();
+
+            frames[j + 1] = NULL;
+            if (!m_param->rc.bStatRead)
+                slicetypeAnalyse(frames, true);
+            bool bIsVbv = m_param->rc.vbvBufferSize > 0 && m_param->rc.vbvMaxBitrate > 0;
+            if ((strlen(m_param->analysisLoad) && m_param->scaleFactor && bIsVbv) || m_param->bliveVBV2pass)
+            {
+                int numFrames;
+                for (numFrames = 0; numFrames < maxSearch; numFrames++)
+                {
+                    Lowres *fenc = frames[numFrames + 1];
+                    if (!fenc)
+                        break;
+                }
+                vbvLookahead(frames, numFrames, true);
+            }
+        }
+
+        m_outputLock.release();
+    }
+    else if (m_param->bEnableTemporalSubLayers > 2)
     {
         //Split the partial mini GOP into sub mini GOPs when temporal sub layers are enabled
         if (bframes < m_param->bframes)
@@ -2643,30 +2896,49 @@ void Lookahead::slicetypeDecide()
         /* Add B-ref frame next to P frame in output queue, the B-ref encode before non B-ref frame */
         if (brefs)
         {
-            for (int i = 0; i < bframes; i++)
-            {
-                if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
-                {
-                    list[i]->m_reorderedPts = pts[idx++];
-                    if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
-                        list[i]->m_qpLayer = 1;
-                    m_outputQueue.pushBack(*list[i]);
-                }
-            }
+            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+			{
+	            for (int i = 0; i < bframes; i++)
+	                if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
+	                {
+	                    list[i]->m_reorderedPts = pts[idx++];
+	                    list[i]->m_qpLayer = 1;
+	                    m_outputQueue.pushBack(*list[i]);
+						break;
+	                }
+			}
+			else
+			{
+	            for (int i = 0; i < bframes; i++)
+	                if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
+	                {
+	                    list[i]->m_reorderedPts = pts[idx++];
+	                    m_outputQueue.pushBack(*list[i]);
+	                }
+			}
         }
 
         /* add B frames to output queue */
-        for (int i = 0; i < bframes; i++)
-        {
-            /* push all the B frames into output queue except B-ref, which already pushed into output queue */
-            if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
-            {
-                list[i]->m_reorderedPts = pts[idx++];
-                if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
-                    list[i]->m_qpLayer = 2;
-                m_outputQueue.pushBack(*list[i]);
-            }
-        }
+		/* push all the B frames into output queue except B-ref, which already pushed into output queue */
+		if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+		{
+	        for (int i = 0; i < bframes; i++)
+	            if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
+	            {
+	                list[i]->m_reorderedPts = pts[idx++];
+	                list[i]->m_qpLayer = 2;
+	                m_outputQueue.pushBack(*list[i]);
+	            }
+		}
+		else
+		{
+	        for (int i = 0; i < bframes; i++)
+	            if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
+	            {
+	                list[i]->m_reorderedPts = pts[idx++];
+	                m_outputQueue.pushBack(*list[i]);
+	            }
+		}
 
 
         bool isKeyFrameAnalyse = (m_param->rc.cuTree || (m_param->rc.vbvBufferSize && m_param->lookaheadDepth));
@@ -2749,7 +3021,11 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
         }
 
         /* Handle the B-frames: coded order */
-        if (m_param->bEnableTemporalSubLayers > 2)
+        if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+        {
+            vbvHierarchicalFrameCost(frames, prevNonB, curNonB, nextNonB, nextNonB, nextB, miniGopEnd, 1, &idx);
+        }
+        else if (m_param->bEnableTemporalSubLayers > 2)
         {
             int curMiniGopIdx = miniGopEnd - 2;
             
@@ -3103,7 +3379,7 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
     }
     if (m_param->bframes)
     {
-        if (m_param->bFrameAdaptive >= 2)
+        if (m_param->bFrameAdaptive >= X265_B_ADAPT_TRELLIS)
         {
             if (numFrames > 1)
             {
@@ -3114,15 +3390,60 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                 for (int j = 2; j <= numFrames; j++)
                     slicetypePath(frames, j, best_paths);
 
-                numBFrames = (int)strspn(best_paths[best_path_index], "B");
-				
-				if (best_paths[best_path_index][numBFrames] == 'R' && m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
-					numBFrames = numBFrames + 1 + (int)strspn(best_paths[best_path_index] + numBFrames + 1, "B");
+                numBFrames = (int)strcspn(best_paths[best_path_index], "P");
 
                 /* Load the results of the analysis into the frame types. */
-                for (int j = 1; j < numFrames; j++)
-                    frames[j]->sliceType = best_paths[best_path_index][j - 1] == 'B' ? X265_TYPE_B : 
-					                       best_paths[best_path_index][j - 1] == 'R' ? X265_TYPE_BREF : X265_TYPE_P;
+                if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+                {
+                    for (int j = 1; j < numFrames; j++)
+                        switch (best_paths[best_path_index][j - 1])
+                        {
+                        case 'J':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 1;
+                            break;
+                        case 'K':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 2;
+                            break;
+                        case 'L':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 3;
+                            break;
+                        case 'M':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 4;
+                            break;
+                        case 'B':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 1;
+                            break;
+                        case 'C':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 2;
+                            break;
+                        case 'D':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 3;
+                            break;
+                        case 'E':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 4;
+                            break;
+                        case 'P':
+                            frames[j]->sliceType = X265_TYPE_P;
+                            frames[j]->m_tempLayer = 0;
+                            break;
+                        default:
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 1;
+                            break;
+                        }
+                }
+                else
+                    for (int j = 1; j < numFrames; j++)
+                        frames[j]->sliceType = best_paths[best_path_index][j - 1] == 'B' ? X265_TYPE_B : 
+					                           best_paths[best_path_index][j - 1] == 'R' ? X265_TYPE_BREF : X265_TYPE_P;
             }
             frames[numFrames]->sliceType = X265_TYPE_P;
         }
@@ -3557,7 +3878,7 @@ void Lookahead::slicetypePath(Lowres **frames, int length, char(*best_paths)[X26
     int idx = 0;
 
     /* Iterate over all currently possible paths */
-    if (m_param->bEnableTemporalSubLayers > 2)
+    if (m_param->bEnableTemporalSubLayers > 2 && m_param->bFrameAdaptive == X265_B_ADAPT_TRELLIS)
     {
         for (int path = 0; path < num_paths; path = (length <= 3) ? (path + 1) : (path * 2 + 1))
         {
@@ -3621,6 +3942,62 @@ int Lookahead::findSliceType(int poc)
     return out_slicetype;
 }
 
+HierarchicalResult Lookahead::slicetypeHierarchicalCost(Lowres** frames, int start, int end, int t_layer, int64_t threshold)
+{
+    CostEstimateGroup estGroup(*this, frames);
+    HierarchicalResult result;
+    int len = end - start;
+
+    int64_t gop_cost = 0;
+    HierarchicalResult gop_result;
+    for (int middle = start + 1; middle < end; middle++)
+    {
+        gop_cost += estGroup.singleCost(start, end, middle);
+        gop_result.path[middle] = 'A' + t_layer;
+    }
+    gop_result.cost = gop_cost;
+
+    HierarchicalResult ref_result;
+    if (len > 2 && (t_layer < 3 || (t_layer == 3 && len == 4)))
+    {
+        int shift = (t_layer == 3) ? 1 : 0;
+        for (int middle = start + 1 + shift; middle < end - shift; middle++)
+        {
+            HierarchicalResult cur;
+            int64_t sub_cost = estGroup.singleCost(start, end, middle);
+
+            if (middle > start + 1)
+            {
+                HierarchicalResult left = slicetypeHierarchicalCost(frames, start, middle, t_layer + 1, threshold - sub_cost);
+                sub_cost += left.cost;
+                for (int i = start + 1; i < middle; i++)
+                    cur.path[i] = left.path[i];
+            }
+
+            if (middle < end - 1)
+            {
+                HierarchicalResult right = slicetypeHierarchicalCost(frames, middle, end, t_layer + 1, threshold - sub_cost);
+                sub_cost += right.cost;
+                for (int i = middle + 1; i < end; i++)
+                    cur.path[i] = right.path[i];
+            }
+
+            cur.path[middle] = 'I' + t_layer;
+            cur.cost = sub_cost;
+
+            if (cur.cost < ref_result.cost)
+                ref_result = cur;
+        }
+    }
+
+    if (ref_result.cost < gop_result.cost)
+        result = ref_result;
+    else
+        result = gop_result;
+
+    return result;
+}
+
 int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t threshold)
 {
     int64_t cost = 0;
@@ -3646,7 +4023,14 @@ int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t thresh
 
         if (m_param->bBPyramid && next_p - cur_p > 2)
         {
-            if (m_param->bEnableTemporalSubLayers > 2)
+            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+            {
+                HierarchicalResult hres = slicetypeHierarchicalCost(frames, cur_p, next_p, 1, threshold);
+                cost += hres.cost;
+                for (int i = cur_p + 1; i < next_p; i++)
+                    path[i] = hres.path[i];
+            }
+            else if (m_param->bEnableTemporalSubLayers > 2)
             {
                 for (int i = 0, dst = next_p - cur_p - 2; i <= dst && cost < threshold; i++)
                     cost += estGroup.singleCost(cur_p + x265_gop_cost_tbl[dst][i].l,
@@ -3865,7 +4249,19 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
         bframes = lastnonb - curnonb - 1;
         if (m_param->bBPyramid && bframes > 1)
         {
-            if (m_param->bEnableTemporalSubLayers > 2)
+            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+            {
+                compHierarchicalCost(frames, curnonb, lastnonb, 1);
+
+                for (int id = curnonb + 1; id < lastnonb; id++)
+                    if (frames[id]->sliceType == X265_TYPE_BREF)
+                        memset(frames[id]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
+
+                estimateHierarchicalCUPropagate(frames, averageDuration, curnonb, lastnonb, 1);
+
+                i = curnonb;
+            }
+            else if (m_param->bEnableTemporalSubLayers > 2)
             {
                 int bidx = bframes - 1;
                 if (m_param->bNondyadicH == 1)
@@ -3994,7 +4390,25 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
     cuTreeFinish(frames[lastnonb], averageDuration, lastnonb);
     if (m_param->bBPyramid && bframes > 1 && !m_param->rc.vbvBufferSize)
     {
-        if (m_param->bEnableTemporalSubLayers > 2)
+        if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+        {
+            int t_layer = 1;
+            while (t_layer < m_param->bEnableTemporalSubLayers - 1)
+            {
+                int ret = -1;
+                for (int j = bframes; j >= 1; j--)
+                    if (frames[j]->m_tempLayer == t_layer && frames[j]->sliceType == X265_TYPE_BREF)
+                    {
+                        ret = j;
+                        cuTreeFinish(frames[lastnonb + ret], averageDuration, 0);
+                    }
+                if (ret > -1)
+                    t_layer++;
+                else
+                    break;
+            }
+        }
+        else if (m_param->bEnableTemporalSubLayers > 2)
         {
             if (m_param->bNondyadicH == 1)
             {
@@ -4024,6 +4438,34 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
                 cuTreeFinish(frames[lastnonb + (bframes + 1) / 2], averageDuration, 0);
         }
     }
+}
+
+void Lookahead::estimateHierarchicalCUPropagate(Lowres **frames, double averageDuration, int start, int end, int t_layer)
+{
+    int ref = -1;
+    if (t_layer < m_param->bEnableTemporalSubLayers - 1 && end - start > 2)
+        for (int i = start + 1; i < end; i++)
+            if (frames[i]->m_tempLayer == t_layer && frames[i]->sliceType == X265_TYPE_BREF)
+            {
+                ref = i;
+                break;
+            }
+
+    if (ref > -1)
+    {
+        if (ref < end - 1)
+            estimateHierarchicalCUPropagate(frames, averageDuration, ref, end, t_layer + 1);
+
+        if (ref > start + 1)
+            estimateHierarchicalCUPropagate(frames, averageDuration, start, ref, t_layer + 1);
+
+        estimateCUPropagate(frames, averageDuration, start, end, ref, 1);
+    }
+    else
+        for (int i = end - 1; i > start; i--)
+            estimateCUPropagate(frames, averageDuration, start, end, i, 0);
+
+    return;
 }
 
 void Lookahead::estimateCUPropagate(Lowres **frames, double averageDuration, int p0, int p1, int b, int referenced)

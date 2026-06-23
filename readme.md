@@ -10,17 +10,26 @@ Usage
 
 1. b-adapt=3: a viterbi B path selection with adaptive reference B-frame insertion according to the minimal cost.
 
-   ``--b-adapt=3``
+   ``--b-adapt=3 --bframes=N``
+
+   It is not recommended to use bframes greater than 8.
 
    
-3. Non-Dyadic MiniGOP (b-slice frames: 8, 1P-2B-6b):
+2. b-adapt=4: a viterbi Hierarchical B path selection with adaptive reference Hierarchical B-frame insertion according to the minimal cost.
+
+   ``--b-adapt=4 --temporal-layers=4/5 --bframes=N``
+
+   The overhead associated with optimal path selection is extremely high, which limits cuTree's performance; therefore, it is not recommended to use bframes greater than 8.
+
+   
+3. Non-Dyadic Hierarchical MiniGOP (b-slice frames: 8, 1P-2B-6b):
 
    ``--temporal-layers=3 --bframes=8``
    or
    ``--tune="minigop9nd"``
 
    
-4. Adaptive MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
+4. Adaptive Hierarchical MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
    
    ``--temporal-layers=5 --b-adapt 2 --bframe-bias=0``
    or
@@ -41,11 +50,13 @@ Usage
 
    Using ``--tune='minigop8'`` or ``--tune='minigop16'`` to quickly configure all settings by default.
 
-7. Updated bframes < minigop's fixed bframes mechanism of lookahead slice decision to improve efficiency. Had passed a lot of hardware decoding tests.
+   
+6. Updated bframes < minigop's fixed bframes mechanism of lookahead slice decision to improve efficiency. Had passed a lot of hardware decoding tests.
   ![](Org.png)
   ![](Mod_MiniGOP.png) 
 
-8. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
+   
+7. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
 
    **WARNING: Experimental feature**
    ![](Mod_MiniGOP_Bref.png)

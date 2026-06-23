@@ -1979,8 +1979,8 @@ int x265_check_params(x265_param* param)
           "Valid quality based range: -qpBDOffsetY to 51");
     CHECK(param->rc.rfConstantMin < -6 * (param->internalBitDepth - 8) || param->rc.rfConstantMin > 51,
           "Valid quality based range: -qpBDOffsetY to 51");
-    CHECK(param->bFrameAdaptive < 0 || param->bFrameAdaptive > 3,
-          "Valid adaptive b scheduling values 0 - none, 1 - fast, 2 - full, 3 - full with adaptive reference B-frame insertion");
+    CHECK(param->bFrameAdaptive < 0 || param->bFrameAdaptive > 4,
+          "Valid adaptive b scheduling values 0 - none, 1 - fast, 2 - full, 3/4 - full with adaptive reference B-frame insertion");
     CHECK(param->logLevel<-1 || param->logLevel> X265_LOG_FULL,
           "Valid Logging level -1:none 0:error 1:warning 2:info 3:debug 4:full");
     CHECK(param->scenecutThreshold < 0,

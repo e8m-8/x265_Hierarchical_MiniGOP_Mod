@@ -352,6 +352,7 @@ void Lowres::init(PicYuv *origPic, int poc)
     frameNum = poc;
     leadingBframes = 0;
     indB = 0;
+    m_tempLayer = 1;
     memset(costEst, -1, sizeof(costEst));
     memset(weightedCostDelta, 0, sizeof(weightedCostDelta));
 
