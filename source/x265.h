@@ -576,7 +576,6 @@ typedef enum
 #define X265_B_ADAPT_FAST       1
 #define X265_B_ADAPT_TRELLIS    2
 #define X265_B_ADAPT_AUTO       3
-#define X265_B_ADAPT_AUTO_2     4
 
 #define X265_REF_LIMIT_DEPTH    1
 #define X265_REF_LIMIT_CU       2

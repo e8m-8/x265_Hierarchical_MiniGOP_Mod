@@ -214,12 +214,10 @@ namespace X265_NS {
 			"                                   - 0 : none, the GOP structure is fixed based on the values of --keyint and --bframes.\n"
 			"                                   - 1 : fast, light lookahead is used to choose B frame placement.\n"
 			"                                   - 2 : full (trellis), a viterbi B path selection is performed.\n"
-			"                                   - 3 : auto, viterbi B path selection with minimum cost based adaptive reference B-frame insertion.\n"
+			"                                   - 3 : auto, viterbi B path selection with minimum cost based adaptive reference B-frame insertion\n"
+			"                                         or Hierarchical reference B-frame insertion when Sublayer > 3.\n"
             "                                         This requires enabled b-pyramid. It comes at a significant cost.\n"
-            "                                         Not recommended for bframes > 12.\n"
-            "                                   - 4 : auto, viterbi Hierarchical B path selection with minimum cost based adaptive Hierarchical reference B-frame insertion.\n"
-            "                                         This requires enabled b-pyramid. Extremely high cost.\n"
-            "                                         Not recommended for bframes > 8.\n", param->bFrameAdaptive);
+            "                                         Not recommended for bframes > 12.\n", param->bFrameAdaptive);
         H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
         H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
         H1("                                 Format of each line: framenumber frametype QP\n");
@@ -405,8 +403,8 @@ namespace X265_NS {
             "                                   - 5 : 15-frame Hierarchical B-frame implementation.\n"
             "                                         1P - 1B - 2B - 4B - 8b miniGOP structure, with 5 temporal layers.\n"
             "                                  miniGOP size could be modified due to lookahead decisions.\n"
-            "                                  temporal layers could be reduced due to viterbi B path selection when --b-adapt = 2/4.\n"
-            "                                  When --b-adapt=4 is enabled, --temporal-layers is no longer tied to a fixed maximum number of B-frames.\n"
+            "                                  temporal layers could be reduced due to viterbi B path selection when --b-adapt = 2/3.\n"
+            "                                  When --b-adapt=3 is enabled, --temporal-layers is no longer tied to a fixed maximum number of B-frames.\n"
             "                                  The B-frame length and the positions of each reference B-frame are selected adaptively.\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]bref-on-base-layer     Using B-ref Frame in Base Temporal Sub Layer and Compressing higher layers to layer 2.\n"
             "                                   When enable, it limit the keyframe distance at 4.\n");

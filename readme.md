@@ -12,24 +12,19 @@ Usage
 
    ``--b-adapt=3 --bframes=N``
 
-   It is not recommended to use bframes greater than 8.
+   It is not recommended to use bframes greater than 12.
+
+   When ``--b-adapt=3 --temporal-layers=4/5 --bframes=N``, using a Hierarchical B-frame insertion.
 
    
-2. b-adapt=4: a viterbi Hierarchical B path selection with adaptive reference Hierarchical B-frame insertion according to the minimal cost.
+2. Non-Dyadic Hierarchical MiniGOP (b-slice frames: 5/6/7/8, 3-layers: 1P-2B-3b/1P-2B-4b/1P-2B-5b/1P-2B-6b):
 
-   ``--b-adapt=4 --temporal-layers=4/5 --bframes=N``
-
-   The overhead associated with optimal path selection is extremely high, which limits cuTree's performance; therefore, it is not recommended to use bframes greater than 8.
-
-   
-3. Non-Dyadic Hierarchical MiniGOP (b-slice frames: 8, 1P-2B-6b):
-
-   ``--temporal-layers=3 --bframes=8``
+   ``--temporal-layers=3 --bframes=5/6/7/8``
    or
    ``--tune="minigop9nd"``
 
    
-4. Adaptive Hierarchical MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
+3. Adaptive Hierarchical MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
    
    ``--temporal-layers=5 --b-adapt 2 --bframe-bias=0``
    or
@@ -38,7 +33,7 @@ Usage
    When ``--temporal-layers > 3`` , --bframe-bias should in the range of  [-90, 300].
 
    
-5. BB-ratio rate-control, using ':' to separate the independent factor like ``--pbratio`` for each layer or Ref to Non-Ref B-Frame:
+4. BB-ratio rate-control, using ':' to separate the independent factor like ``--pbratio`` for each layer or Ref to Non-Ref B-Frame:
 
    ``--bbratio=1.6:1.4:1.2`` for ``--temporal-layers = 5``.
    
@@ -51,12 +46,12 @@ Usage
    Using ``--tune='minigop8'`` or ``--tune='minigop16'`` to quickly configure all settings by default.
 
    
-6. Updated bframes < minigop's fixed bframes mechanism of lookahead slice decision to improve efficiency. Had passed a lot of hardware decoding tests.
+5. Updated bframes < minigop's fixed bframes mechanism of lookahead slice decision to improve efficiency. Had passed a lot of hardware decoding tests.
   ![](Org.png)
   ![](Mod_MiniGOP.png) 
 
    
-7. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
+6. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
 
    **WARNING: Experimental feature**
    ![](Mod_MiniGOP_Bref.png)

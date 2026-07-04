@@ -4142,10 +4142,15 @@ void Encoder::configure(x265_param *p)
             x265_log(p, X265_LOG_WARNING, "The temporal sub-layers must be 3 when enable Nondyadic Hierarchical GOP.\n");
             p->bEnableTemporalSubLayers = 3;
         }
-        if (p->bframes != 8)
+        if (p->bframes > 8)
         {
-            x265_log(p, X265_LOG_WARNING, "The bframes must be 8 when enable Nondyadic Hierarchical GOP.\n");
+            x265_log(p, X265_LOG_WARNING, "The bframes must less than 8 when enable Nondyadic Hierarchical GOP.\n");
             p->bframes = 8;
+        }
+        else if (p->bframes < 5)
+        {
+            x265_log(p, X265_LOG_WARNING, "The bframes must higher than 5 when enable Nondyadic Hierarchical GOP.\n");
+            p->bframes = 5;
         }
         if (p->bFrameAdaptive != 0)
         {
@@ -4154,15 +4159,15 @@ void Encoder::configure(x265_param *p)
         }
     }
 
-    if (p->bEnableTemporalSubLayers == 3 && p->bframes == 8)
+    if (p->bEnableTemporalSubLayers == 3 && p->bframes > 4 && p->bframes < 9)
     {
-        if (p->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+        if (!!p->bFrameAdaptive)
         {
-            p->bNondyadicH = 0;
+            p->bFrameAdaptive = 0;
         }
         else if (p->bNondyadicH != 1)
         {
-            x265_log(p, X265_LOG_WARNING, "When bframes = 8 and temporal layer = 3, Enable Nondyadic Hierarchical GOP.\n");
+            x265_log(p, X265_LOG_WARNING, "When bframes = 5 ~ 8 and temporal layer = 3, Enable Nondyadic Hierarchical GOP.\n");
             p->bNondyadicH = 1;
             p->bFrameAdaptive = 0;
         }
@@ -4174,19 +4179,25 @@ void Encoder::configure(x265_param *p)
         p->bEnableTemporalSubLayers = 0;
     }
 
-    if (p->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+    if (p->bFrameAdaptive > X265_B_ADAPT_FAST && p->bEnableTemporalSubLayers > 1)
     {
-	    if (p->bEnableTemporalSubLayers < 4)
-	    {
-	        p->bEnableTemporalSubLayers = 4;
-	        x265_log(p, X265_LOG_WARNING, "No support for temporal sublayers less than 4 when b-adapt = 4; Changing the temporal sublayers to 4.\n");
-	    }
+        if (p->bFrameAdaptive == X265_B_ADAPT_AUTO && p->bEnableTemporalSubLayers < 4)
+        {
+            p->bEnableTemporalSubLayers = 4;
+            x265_log(p, X265_LOG_WARNING, "No support for temporal sublayers less than 4 when b-adapt = 3; Changing the temporal sublayers to 4.\n");
+        }
 
-	    if (p->bEnableTemporalSubLayers > 5)
-	    {
-	        p->bEnableTemporalSubLayers = 5;
-	        x265_log(p, X265_LOG_WARNING, "No support for temporal sublayers more than 5 when b-adapt = 4; Reducing the temporal sublayers to 5.\n");
-	    }
+        if (p->bFrameAdaptive == X265_B_ADAPT_TRELLIS && p->bEnableTemporalSubLayers > 2 && p->bEnableTemporalSubLayers < 5)
+        {
+            x265_log(p, X265_LOG_WARNING, "No support for temporal sublayers %d when b-adapt = 2; Changing the temporal sublayers to 5.\n", p->bEnableTemporalSubLayers);
+            p->bEnableTemporalSubLayers = 5;
+        }
+
+        if (p->bEnableTemporalSubLayers > 5)
+        {
+            p->bEnableTemporalSubLayers = 5;
+            x265_log(p, X265_LOG_WARNING, "No support for temporal sublayers more than 5 when b-adapt = %d; Reducing the temporal sublayers to 5.\n", p->bFrameAdaptive);
+        }
     }
     else
     {
@@ -4204,11 +4215,11 @@ void Encoder::configure(x265_param *p)
     }
 
     // Assign number of B frames for temporal layers
-    if (p->bEnableTemporalSubLayers > 2 && p->bFrameAdaptive != X265_B_ADAPT_AUTO_2)
+    if (p->bEnableTemporalSubLayers > 2 && p->bFrameAdaptive != X265_B_ADAPT_AUTO)
     {
         if (p->bframes != x265_temporal_layer_bframes[p->bEnableTemporalSubLayers - 1] )
         {
-            if (p->bframes == 8 && p->bEnableTemporalSubLayers == 3 && p->bNondyadicH == 1 && p->bFrameAdaptive == 0)
+            if (p->bEnableTemporalSubLayers == 3 && p->bNondyadicH == 1 && p->bFrameAdaptive == 0)
             {
                 x265_log(p, X265_LOG_WARNING, "The Nondyadic Hierarchical GOP is Enable Now.\n");
             }
@@ -4224,9 +4235,9 @@ void Encoder::configure(x265_param *p)
     {
         if (!!p->bFrameAdaptive)
         {
-            if (p->bFrameAdaptive == X265_B_ADAPT_FAST || p->bFrameAdaptive == X265_B_ADAPT_AUTO)
+            if (p->bFrameAdaptive == X265_B_ADAPT_FAST)
             {
-                x265_log(p, X265_LOG_WARNING, "Adaptive B-frame placement 1 / 3 is not supported when using %d temporal sub-layers. Changed to 2.\n", p->bEnableTemporalSubLayers);
+                x265_log(p, X265_LOG_WARNING, "Adaptive B-frame placement 1 is not supported when using %d temporal sub-layers. Changed to 2.\n", p->bEnableTemporalSubLayers);
                 p->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
             }
             x265_log(p, X265_LOG_INFO, "Trellis Adaptive B-frames placement mode %d in maximum. %d temporal sub-layers.\n", p->bFrameAdaptive, p->bEnableTemporalSubLayers);
@@ -4267,10 +4278,10 @@ void Encoder::configure(x265_param *p)
 	
     if (p->bRefSublayer)
     {
-        if (p->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+        if (p->bFrameAdaptive == X265_B_ADAPT_AUTO)
         {
             p->bRefSublayer = 0;
-            x265_log(p, X265_LOG_WARNING, "When using --b-adapt == 4, --bref-on-sub-layer can't be enabled! Changed to disabled.\n");
+            x265_log(p, X265_LOG_WARNING, "When using --b-adapt == 3, --bref-on-sub-layer can't be enabled! Changed to disabled.\n");
         }
         if (p->bEnableTemporalSubLayers < 4)
         {
@@ -4318,7 +4329,7 @@ void Encoder::configure(x265_param *p)
         }
     }
 
-    if (p->bFrameAdaptive >= X265_B_ADAPT_AUTO)
+    if (p->bFrameAdaptive == X265_B_ADAPT_AUTO)
     {
         if (!!p->bAQMotion)
         {
@@ -4336,11 +4347,6 @@ void Encoder::configure(x265_param *p)
             x265_log(p, X265_LOG_WARNING, "When temporal sub-layers < 3, --b-adapt can't be %d. Changed to 2.\n", p->bFrameAdaptive);
             p->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
         }
-		else if (p->bEnableTemporalSubLayers > 3 && p->bFrameAdaptive != X265_B_ADAPT_AUTO_2)
-        {
-            x265_log(p, X265_LOG_WARNING, "When temporal sub-layers > 3, --b-adapt can't be %d. Changed to 4.\n", p->bFrameAdaptive);
-            p->bFrameAdaptive = X265_B_ADAPT_AUTO_2;
-        }
         else if (!p->bBPyramid)
         {
             x265_log(p, X265_LOG_WARNING, "--b-adapt = %d can not enabled without b-pyramid. Changed to 2.", p->bFrameAdaptive);
@@ -4352,12 +4358,12 @@ void Encoder::configure(x265_param *p)
                 x265_log(p, X265_LOG_WARNING, "--b-adapt = %d is not recommended for bframes higher than 12 cause of the high cost.\n", p->bFrameAdaptive);
             else
             {
-                if (p->bframes < 2 && p->bFrameAdaptive == X265_B_ADAPT_AUTO)
+                if (p->bframes < 2 && !p->bEnableTemporalSubLayers)
                 {
                     x265_log(p, X265_LOG_WARNING, "--b-adapt %d is useless when --bframes = %d. Changed --bframes to %d.\n", p->bFrameAdaptive, p->bframes, 2);
                     p->bframes = 2;
                 }
-                else if (p->bframes < (p->bEnableTemporalSubLayers - 1) && p->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+                else if (p->bframes < p->bEnableTemporalSubLayers - 1)
                 {
                     x265_log(p, X265_LOG_WARNING, "--b-adapt %d is useless when --bframes = %d. Changed --bframes to %d.\n", p->bFrameAdaptive, p->bframes, p->bEnableTemporalSubLayers - 1);
                     p->bframes = p->bEnableTemporalSubLayers - 1;

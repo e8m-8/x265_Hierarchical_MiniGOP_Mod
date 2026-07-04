@@ -1085,22 +1085,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool)
     m_segmentCountThreshold = (uint32_t)(((float)((NUMBER_OF_SEGMENTS_IN_WIDTH * NUMBER_OF_SEGMENTS_IN_HEIGHT) * 50) / 100) + 0.5);
 
     if (m_param->bEnableTemporalSubLayers > 2)
-    {
-        switch (m_param->bEnableTemporalSubLayers)
-        {
-        case 3:
-            m_gopId = m_param->bNondyadicH ? 7 : 2;
-            break;
-        case 4:
-            m_gopId = 6;
-            break;
-        case 5:
-            m_gopId = 14;
-            break;
-        default:
-            break;
-        }
-    }
+        m_gopId = m_param->bframes - 1;
 }
 
 #if DETAILED_CU_STATS
@@ -2226,7 +2211,7 @@ void Lookahead::slicetypeDecide()
             /* pyramid with multiple B-refs needs a big enough dpb that the preceding P-frame stays available.
              * smaller dpb could be supported by smart enough use of mmco, but it's easier just to forbid it. */
             else if (frm.sliceType == X265_TYPE_BREF && m_param->bBPyramid && brefs &&
-                m_param->maxNumReferences <= (brefs + 3) && m_param->bFrameAdaptive != X265_B_ADAPT_AUTO_2)
+                m_param->maxNumReferences <= (brefs + 3) && !(m_param->bFrameAdaptive == X265_B_ADAPT_AUTO && m_param->bEnableTemporalSubLayers > 3))
             {
                 frm.sliceType = X265_TYPE_B;
                 x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid and %d reference frames\n",
@@ -2372,7 +2357,7 @@ void Lookahead::slicetypeDecide()
         estGroup.finishBatch();
     }
     
-    if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+    if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO && m_param->bEnableTemporalSubLayers > 3)
     {
 
         if (bframes)
@@ -3021,7 +3006,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
         }
 
         /* Handle the B-frames: coded order */
-        if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+        if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO && m_param->bEnableTemporalSubLayers > 3)
         {
             vbvHierarchicalFrameCost(frames, prevNonB, curNonB, nextNonB, nextNonB, nextB, miniGopEnd, 1, &idx);
         }
@@ -3393,7 +3378,7 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                 numBFrames = (int)strcspn(best_paths[best_path_index], "P");
 
                 /* Load the results of the analysis into the frame types. */
-                if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+                if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO && m_param->bEnableTemporalSubLayers > 3)
                 {
                     for (int j = 1; j < numFrames; j++)
                         switch (best_paths[best_path_index][j - 1])
@@ -4023,7 +4008,7 @@ int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t thresh
 
         if (m_param->bBPyramid && next_p - cur_p > 2)
         {
-            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO && m_param->bEnableTemporalSubLayers > 3)
             {
                 HierarchicalResult hres = slicetypeHierarchicalCost(frames, cur_p, next_p, 1, threshold);
                 cost += hres.cost;
@@ -4249,7 +4234,7 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
         bframes = lastnonb - curnonb - 1;
         if (m_param->bBPyramid && bframes > 1)
         {
-            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+            if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO && m_param->bEnableTemporalSubLayers > 3)
             {
                 compHierarchicalCost(frames, curnonb, lastnonb, 1);
 
@@ -4390,7 +4375,7 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
     cuTreeFinish(frames[lastnonb], averageDuration, lastnonb);
     if (m_param->bBPyramid && bframes > 1 && !m_param->rc.vbvBufferSize)
     {
-        if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO_2)
+        if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO && m_param->bEnableTemporalSubLayers > 3)
         {
             int t_layer = 1;
             while (t_layer < m_param->bEnableTemporalSubLayers - 1)
