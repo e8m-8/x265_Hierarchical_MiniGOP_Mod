@@ -4322,9 +4322,9 @@ void Encoder::configure(x265_param *p)
             {
                 p->bFrameBias = X265_MIN(X265_MAX(-90, p->bFrameBias), 100);
                 if (p->bEnableTemporalSubLayers > 1)
-                    x265_log(p, X265_LOG_WARNING, "bframe-bias must higher than -90 and less than 100 when temporal sub-layers = 2 or 3! Changed to %d.\n", p->bFrameBias);
+                    x265_log(p, X265_LOG_WARNING, "bframe-bias must higher than -90 and less than 100 when temporal sub-layers enable! Changed to %d.\n", p->bFrameBias);
                 else
-                    x265_log(p, X265_LOG_WARNING, "bframe-bias must higher than -90 and less than 100 when disable temporal sub-layers! Changed to %d.\n", p->bFrameBias);
+                    x265_log(p, X265_LOG_WARNING, "bframe-bias must higher than -90 and less than 100! Changed to %d.\n", p->bFrameBias);
             }
         }
     }

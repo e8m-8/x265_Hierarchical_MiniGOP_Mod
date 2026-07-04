@@ -24,9 +24,11 @@ Usage
    ``--tune="minigop9nd"``
 
    
-3. Adaptive Hierarchical MiniGOP (b-slice frames: 1/3/7/15, Perfect binary tree) and adaptive MiniGOP b-frame bias control:
+3. Adaptive Hierarchical MiniGOP Size (b-slice frames: 1~N) and adaptive MiniGOP b-frame bias control:
    
-   ``--temporal-layers=5 --b-adapt 2 --bframe-bias=0``
+   ``--temporal-layers=5 --b-adapt=3 --bframes=4~16 --bframe-bias=0``
+   or
+   ``--temporal-layers=5 --b-adapt=2 --bframes=15 --bframe-bias=0``
    or
    ``--tune="adaptminigop"``
 

@@ -3863,42 +3863,20 @@ void Lookahead::slicetypePath(Lowres **frames, int length, char(*best_paths)[X26
     int idx = 0;
 
     /* Iterate over all currently possible paths */
-    if (m_param->bEnableTemporalSubLayers > 2 && m_param->bFrameAdaptive == X265_B_ADAPT_TRELLIS)
+    for (int path = 0; path < num_paths; path++)
     {
-        for (int path = 0; path < num_paths; path = (length <= 3) ? (path + 1) : (path * 2 + 1))
-        {
-            /* Add suffixes to the current path */
-            int len = length - (path + 1);
-            memcpy(paths[idx], best_paths[len % (X265_BFRAME_MAX + 1)], len);
-            memset(paths[idx] + len, 'B', path);
-            strcpy(paths[idx] + len + path, "P");
+        /* Add suffixes to the current path */
+        int len = length - (path + 1);
+        memcpy(paths[idx], best_paths[len % (X265_BFRAME_MAX + 1)], len);
+        memset(paths[idx] + len, 'B', path);
+        strcpy(paths[idx] + len + path, "P");
 
-            /* Calculate the actual cost of the current path */
-            int64_t cost = slicetypePathCost(frames, paths[idx], best_cost);
-            if (cost < best_cost)
-            {
-                best_cost = cost;
-                idx ^= 1;
-            }
-        }
-    }
-    else
-    {
-        for (int path = 0; path < num_paths; path++)
+        /* Calculate the actual cost of the current path */
+        int64_t cost = slicetypePathCost(frames, paths[idx], best_cost);
+        if (cost < best_cost)
         {
-            /* Add suffixes to the current path */
-            int len = length - (path + 1);
-            memcpy(paths[idx], best_paths[len % (X265_BFRAME_MAX + 1)], len);
-            memset(paths[idx] + len, 'B', path);
-            strcpy(paths[idx] + len + path, "P");
-
-            /* Calculate the actual cost of the current path */
-            int64_t cost = slicetypePathCost(frames, paths[idx], best_cost);
-            if (cost < best_cost)
-            {
-                best_cost = cost;
-                idx ^= 1;
-            }
+            best_cost = cost;
+            idx ^= 1;
         }
     }
 
