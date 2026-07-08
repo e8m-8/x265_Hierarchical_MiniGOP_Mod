@@ -308,6 +308,8 @@ void x265_param_default(x265_param* param)
     param->rc.bbFactor[0] = 0.8f;
     param->rc.bbFactor[1] = 1.3f;
     param->rc.bbFactor[2] = 0.9f;
+    param->rc.bbFactor[3] = 1.0f;
+    param->rc.bbFactor[4] = 1.0f;
     param->rc.qpStep = 4;
     param->rc.rateControlMode = X265_RC_CRF;
     param->rc.qp = 32;
@@ -1287,24 +1289,34 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT2("ipratio", "ip-factor") p->rc.ipFactor = atof(value);
     OPT2("pbratio", "pb-factor") p->rc.pbFactor = atof(value);
     OPT2("bbratio", "bb-factor")
-    {   
-        if (3 == sscanf(value, "%lf:%lf:%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2]) ||
-            3 == sscanf(value, "%lf,%lf,%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2]))
+    {
+        if (5 == sscanf(value, "%lf:%lf:%lf:%lf:%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2], &p->rc.bbFactor[3], &p->rc.bbFactor[4]) ||
+            5 == sscanf(value, "%lf,%lf,%lf,%lf,%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2], &p->rc.bbFactor[3], &p->rc.bbFactor[4]))
         {
             //
         }
-        else {
-            if (2 == sscanf(value, "%lf:%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1]) ||
-                2 == sscanf(value, "%lf,%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1]))
-            {
-                //p->rc.bbFactor[2] = p->rc.bbFactor[1];
-            }
-            else
-            {
-                p->rc.bbFactor[0] = atof(value);
-                p->rc.bbFactor[1] = p->rc.bbFactor[0];
-                p->rc.bbFactor[2] = p->rc.bbFactor[0];
-            }
+        else if (4 == sscanf(value, "%lf:%lf:%lf:%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2], &p->rc.bbFactor[3]) ||
+                 4 == sscanf(value, "%lf,%lf,%lf,%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2], &p->rc.bbFactor[3]))
+        {
+            //
+        }
+        else if (3 == sscanf(value, "%lf:%lf:%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2]) ||
+                 3 == sscanf(value, "%lf,%lf,%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1], &p->rc.bbFactor[2]))
+        {
+            //
+        }
+        else if (2 == sscanf(value, "%lf:%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1]) ||
+                 2 == sscanf(value, "%lf,%lf", &p->rc.bbFactor[0], &p->rc.bbFactor[1]))
+        {
+            //
+        }
+        else
+        {
+            p->rc.bbFactor[0] = atof(value);
+            p->rc.bbFactor[1] = p->rc.bbFactor[0];
+            p->rc.bbFactor[2] = p->rc.bbFactor[0];
+            p->rc.bbFactor[3] = p->rc.bbFactor[0];
+            p->rc.bbFactor[4] = p->rc.bbFactor[0];
         }
     }
     OPT("qcomp") p->rc.qCompress = atof(value);
@@ -2297,6 +2309,10 @@ void x265_print_params(x265_param* param)
             x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1]); break;
         case 5:
             x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2]); break;
+        case 6:
+            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2], param->rc.bbFactor[3]); break;
+        case 7:
+            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f : %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2], param->rc.bbFactor[3], param->rc.bbFactor[4]); break;
         }
     }
 
@@ -2555,6 +2571,14 @@ char *x265_param2string(x265_param* p, int padx, int pady)
                     if (p->bEnableTemporalSubLayers > 4)
                     {
                         s += snprintf(s, bufSize - (s - buf), ":%.2f", p->rc.bbFactor[2]);
+                        if (p->bEnableTemporalSubLayers > 5)
+                        {
+                            s += snprintf(s, bufSize - (s - buf), ":%.2f", p->rc.bbFactor[3]);
+                            if (p->bEnableTemporalSubLayers > 6)
+                            {
+                                s += snprintf(s, bufSize - (s - buf), ":%.2f", p->rc.bbFactor[4]);
+                            }
+                        }
                     }
                 }
             }
@@ -3016,6 +3040,8 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->rc.bbFactor[0] = src->rc.bbFactor[0];
     dst->rc.bbFactor[1] = src->rc.bbFactor[1];
     dst->rc.bbFactor[2] = src->rc.bbFactor[2];
+    dst->rc.bbFactor[3] = src->rc.bbFactor[3];
+    dst->rc.bbFactor[4] = src->rc.bbFactor[4];
     dst->rc.rfConstant = src->rc.rfConstant;
     dst->rc.qpStep = src->rc.qpStep;
     dst->rc.aqMode = src->rc.aqMode;

@@ -405,7 +405,8 @@ namespace X265_NS {
             "                                  miniGOP size could be modified due to lookahead decisions.\n"
             "                                  temporal layers could be reduced due to viterbi B path selection when --b-adapt = 2/3.\n"
             "                                  When --b-adapt=3 is enabled, --temporal-layers is no longer tied to a fixed maximum number of B-frames.\n"
-            "                                  The B-frame length and the positions of each reference B-frame are selected adaptively.\n", OPT(param->bEnableTemporalSubLayers));
+            "                                  The B-frame length and the positions of each reference B-frame are selected adaptively.\n"
+            "                                  At the same time, --b-adapt=3 allows --temporal-layers=6/7 (requires --ref=8 and --allow-non-conformance).\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]bref-on-base-layer     Using B-ref Frame in Base Temporal Sub Layer and Compressing higher layers to layer 2.\n"
             "                                   When enable, it limit the keyframe distance at 4.\n");
         H0("   --[no-]h-nondyadic-gop        Using 8-frame Nondyadic Hierarchical B-frame implementation with 3 temporal layers.\n"

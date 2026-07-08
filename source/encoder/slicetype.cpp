@@ -3399,6 +3399,14 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                             frames[j]->sliceType = X265_TYPE_BREF;
                             frames[j]->m_tempLayer = 4;
                             break;
+                        case 'N':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 5;
+                            break;
+                        case 'O':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 6;
+                            break;
                         case 'B':
                             frames[j]->sliceType = X265_TYPE_B;
                             frames[j]->m_tempLayer = 1;
@@ -3414,6 +3422,14 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                         case 'E':
                             frames[j]->sliceType = X265_TYPE_B;
                             frames[j]->m_tempLayer = 4;
+                            break;
+                        case 'F':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 5;
+                            break;
+                        case 'G':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 6;
                             break;
                         case 'P':
                             frames[j]->sliceType = X265_TYPE_P;
@@ -3921,29 +3937,22 @@ HierarchicalResult Lookahead::slicetypeHierarchicalCost(Lowres** frames, int sta
     gop_result.cost = gop_cost;
 
     HierarchicalResult ref_result;
-    if (len > 2 && (t_layer < 3 || (t_layer == 3 && len == 4)))
+    if (len > 3 && t_layer < m_param->bEnableTemporalSubLayers - 1)
     {
-        int shift = (t_layer == 3) ? 1 : 0;
-        for (int middle = start + 1 + shift; middle < end - shift; middle++)
+        for (int middle = start + 2; middle < end - 1; middle++)
         {
             HierarchicalResult cur;
             int64_t sub_cost = estGroup.singleCost(start, end, middle);
 
-            if (middle > start + 1)
-            {
-                HierarchicalResult left = slicetypeHierarchicalCost(frames, start, middle, t_layer + 1, threshold - sub_cost);
-                sub_cost += left.cost;
-                for (int i = start + 1; i < middle; i++)
-                    cur.path[i] = left.path[i];
-            }
+            HierarchicalResult left = slicetypeHierarchicalCost(frames, start, middle, t_layer + 1, threshold - sub_cost);
+            sub_cost += left.cost;
+            for (int i = start + 1; i < middle; i++)
+                cur.path[i] = left.path[i];
 
-            if (middle < end - 1)
-            {
-                HierarchicalResult right = slicetypeHierarchicalCost(frames, middle, end, t_layer + 1, threshold - sub_cost);
-                sub_cost += right.cost;
-                for (int i = middle + 1; i < end; i++)
-                    cur.path[i] = right.path[i];
-            }
+            HierarchicalResult right = slicetypeHierarchicalCost(frames, middle, end, t_layer + 1, threshold - sub_cost);
+            sub_cost += right.cost;
+            for (int i = middle + 1; i < end; i++)
+                cur.path[i] = right.path[i];
 
             cur.path[middle] = 'I' + t_layer;
             cur.cost = sub_cost;

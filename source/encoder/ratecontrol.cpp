@@ -326,6 +326,8 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_bbOffset[2] = m_bbOffset[1] + ( (m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[0])) : 0.0 );
     m_bbOffset[3] = m_bbOffset[2] + ( (m_param->bEnableTemporalSubLayers > 3) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[1])) : 0.0 );
     m_bbOffset[4] = m_bbOffset[3] + ( (m_param->bEnableTemporalSubLayers > 4) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[2])) : 0.0 );
+    m_bbOffset[5] = m_bbOffset[4] + ( (m_param->bEnableTemporalSubLayers > 5) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[3])) : 0.0 );
+    m_bbOffset[6] = m_bbOffset[5] + ( (m_param->bEnableTemporalSubLayers > 6) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[4])) : 0.0 );
 
     for (int i = 0; i < QP_MAX_MAX; i++)
         m_qpToEncodedBits[i] = 0;

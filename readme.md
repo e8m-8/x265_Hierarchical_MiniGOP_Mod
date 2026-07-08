@@ -14,7 +14,9 @@ Usage
 
    It is not recommended to use bframes greater than 12.
 
-   When ``--b-adapt=3 --temporal-layers=4/5 --bframes=N``, using a Hierarchical B-frame insertion.
+   When ``--b-adapt=3 --temporal-layers=4/5/6/7 --bframes=N``, using a Hierarchical B-frame insertion.
+
+   Set the --bframes to at least: temporal-layers * 2 - 3.
 
    
 2. Non-Dyadic Hierarchical MiniGOP (b-slice frames: 5/6/7/8, 3-layers: 1P-2B-3b/1P-2B-4b/1P-2B-5b/1P-2B-6b):
