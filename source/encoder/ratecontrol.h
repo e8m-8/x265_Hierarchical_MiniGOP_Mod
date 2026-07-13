@@ -171,9 +171,11 @@ public:
     Predictor m_pred[4];       /* Slice predictors to preidct bits for each Slice type - I,P,Bref and B */
     int64_t m_leadingNoBSatd;
     int     m_predType;       /* Type of slice predictors to be used - depends on the slice type */
+    bool    m_nrbType;
     double  m_ipOffset;
     double  m_pbOffset;
     double  m_bbOffset[7];
+    double  m_rbOffset;
     uint8_t m_qpLayer;
     int64_t m_bframeBits;
     int64_t m_currentSatd;

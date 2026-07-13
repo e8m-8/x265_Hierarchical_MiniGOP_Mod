@@ -1540,10 +1540,12 @@ typedef struct x265_param
 
         /* QP offset between I/P frames. Default ipfactor: 1.4 */
         double    ipFactor;
-        /* QP offset between P/B frames. Default ipfactor: 1.3 */
+        /* QP offset between P/B frames. Default pbfactor: 1.3 */
         double    pbFactor;
-        /* QP offset between Layer-2 / Layer-3 / Layer-4 and more B-frames. Default ipfactor: 1.2:1.1:1.0 */
+        /* QP offset between each Layer and more B-frames. Default bbfactor: 1.2:1.1:1.0 */
         double    bbFactor[5];
+        /* QP offset between Ref-B and Non-Ref B in same layer. Default rbfactor: 1.0 */
+        double    rbFactor;
 
         /* Ratefactor constant: targets a certain constant "quality".
          * Acceptable values between 0 and 51. Default value: 28 */

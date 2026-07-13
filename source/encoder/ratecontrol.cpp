@@ -321,13 +321,14 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_leadingNoBSatd = 0;
     m_ipOffset = 6.0 * X265_LOG2(m_param->rc.ipFactor);
     m_pbOffset = 6.0 * X265_LOG2(m_param->rc.pbFactor);
-    m_bbOffset[0] = 0;
+    m_rbOffset = (m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? 6.0 * X265_LOG2(m_param->rc.rbFactor) : 0.0;
+    m_bbOffset[0] = 0.0;
     m_bbOffset[1] = m_pbOffset;
-    m_bbOffset[2] = m_bbOffset[1] + ( (m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[0])) : 0.0 );
-    m_bbOffset[3] = m_bbOffset[2] + ( (m_param->bEnableTemporalSubLayers > 3) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[1])) : 0.0 );
-    m_bbOffset[4] = m_bbOffset[3] + ( (m_param->bEnableTemporalSubLayers > 4) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[2])) : 0.0 );
-    m_bbOffset[5] = m_bbOffset[4] + ( (m_param->bEnableTemporalSubLayers > 5) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[3])) : 0.0 );
-    m_bbOffset[6] = m_bbOffset[5] + ( (m_param->bEnableTemporalSubLayers > 6) ? (6.0 * X265_LOG2(m_param->rc.bbFactor[4])) : 0.0 );
+    m_bbOffset[2] = m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[1] + 6.0 * X265_LOG2(m_param->rc.bbFactor[0]) : m_bbOffset[1];
+    m_bbOffset[3] = m_param->bEnableTemporalSubLayers > 3 ? m_bbOffset[2] + 6.0 * X265_LOG2(m_param->rc.bbFactor[1]) : m_bbOffset[2];
+    m_bbOffset[4] = m_param->bEnableTemporalSubLayers > 4 ? m_bbOffset[3] + 6.0 * X265_LOG2(m_param->rc.bbFactor[2]) : m_bbOffset[3];
+    m_bbOffset[5] = m_param->bEnableTemporalSubLayers > 5 ? m_bbOffset[4] + 6.0 * X265_LOG2(m_param->rc.bbFactor[3]) : m_bbOffset[4];
+    m_bbOffset[6] = m_param->bEnableTemporalSubLayers > 6 ? m_bbOffset[5] + 6.0 * X265_LOG2(m_param->rc.bbFactor[4]) : m_bbOffset[5];
 
     for (int i = 0; i < QP_MAX_MAX; i++)
         m_qpToEncodedBits[i] = 0;
@@ -351,7 +352,7 @@ RateControl::RateControl(x265_param& p, Encoder *top)
         {
             m_qpConstant[P_SLICE] = m_qp;
             m_qpConstant[I_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qp - m_ipOffset + 0.5));
-            m_qpConstant[B_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qp + ((m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset) + 0.5));
+            m_qpConstant[B_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qp + (m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0) + 0.5));
         }
         else
         {
@@ -886,7 +887,7 @@ void RateControl::reconfigureRC()
         {
             m_qpConstant[P_SLICE] = m_qp;
             m_qpConstant[I_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qp - m_ipOffset + 0.5));
-            m_qpConstant[B_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qp + ((m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset) + 0.5));
+            m_qpConstant[B_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qp + (m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0) + 0.5));
         }
         else
         {
@@ -1291,7 +1292,7 @@ int RateControl::rateControlSliceType(int frameNum)
             m_param->rc.qp = (m_accumPQp < 1) ? ABR_INIT_QP_MAX : (int)(m_accumPQp + 0.5);
             m_qpConstant[P_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, m_param->rc.qp);
             m_qpConstant[I_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_param->rc.qp - m_ipOffset + 0.5));
-            m_qpConstant[B_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_param->rc.qp + ((m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset) + 0.5));
+            m_qpConstant[B_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_param->rc.qp + (m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0) + 0.5));
 
             x265_log(m_param, X265_LOG_ERROR, "2nd pass has more frames than 1st pass (%d)\n", m_numEntries);
             x265_log(m_param, X265_LOG_ERROR, "continuing anyway, at constant QP=%d\n", m_param->rc.qp);
@@ -1361,6 +1362,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     m_curSlice = curEncData.m_slice;
     m_sliceType = m_curSlice->m_sliceType;
     m_qpLayer = X265_MIN(X265_MAX(0, curFrame->m_qpLayer), 6);
+    m_nrbType = X265_MIN(X265_MAX(0, curFrame->m_lowres.sliceType - 4), 1);
 
 #if ENABLE_SCC_EXT
     if(m_param->bEnableSCC)
@@ -2003,9 +2005,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         }
 
         if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
-            q0 -= ((m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset) / 2;
+            q0 -= ((m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0)) / 2;
         if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
-            q1 -= ((m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset) / 2;
+            q1 -= ((m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0)) / 2;
         if (i0 && i1)
             q = (q0 + q1) / 2 + m_ipOffset;
         else if (i0)
@@ -2018,9 +2020,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             q = (q0 * dt1 + q1 * dt0) / (dt0 + dt1);
 
         if (IS_REFERENCED(curFrame))
-            q += ((m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset) / 2;
+            q += ((m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0)) / 2;
         else
-            q += (m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset;
+            q += (m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0);
 
                 /* Set a min qp at scenechanges and transitions */
         if (m_isSceneTransition)
@@ -2277,7 +2279,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                         rfConstant += 2;
                     double ipOffset = (curFrame->m_lowres.bScenecut ? m_ipOffset : m_ipOffset / 2.0);
                     rfConstant = (rce->sliceType == I_SLICE ? rfConstant - ipOffset :
-                        (rce->sliceType == B_SLICE ? rfConstant + ((m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset) : rfConstant));
+                        (rce->sliceType == B_SLICE ? rfConstant + (m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0) : rfConstant));
                     double mbtree_offset = m_param->rc.cuTree ? (1.0 - m_param->rc.qCompress) * 13.5 : 0;
                     double qComp = (m_param->rc.cuTree && !m_param->rc.hevcAq) ? 0.99 : m_param->rc.qCompress;
                     m_rateFactorConstant = pow(m_currentSatd, 1.0 - qComp) /
@@ -3199,7 +3201,7 @@ int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry*
                 crfVal = curFrame->m_targetCrf;
             else
                 crfVal = rce->sliceType == I_SLICE ? (m_param->rc.rfConstant - m_ipOffset) :
-                (rce->sliceType == B_SLICE ? (m_param->rc.rfConstant + ((m_param->bEnableTemporalSubLayers > 2 || m_param->bFrameAdaptive == 3) ? m_bbOffset[m_qpLayer] : m_pbOffset)) : m_param->rc.rfConstant);
+                (rce->sliceType == B_SLICE ? m_param->rc.rfConstant + (m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0) : m_param->rc.rfConstant);
         }
 
         curEncData.m_rateFactor = crfVal;

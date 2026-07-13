@@ -2887,7 +2887,6 @@ void Lookahead::slicetypeDecide()
 	                if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
 	                {
 	                    list[i]->m_reorderedPts = pts[idx++];
-	                    list[i]->m_qpLayer = 1;
 	                    m_outputQueue.pushBack(*list[i]);
 						break;
 	                }
@@ -2905,25 +2904,12 @@ void Lookahead::slicetypeDecide()
 
         /* add B frames to output queue */
 		/* push all the B frames into output queue except B-ref, which already pushed into output queue */
-		if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
-		{
-	        for (int i = 0; i < bframes; i++)
-	            if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
-	            {
-	                list[i]->m_reorderedPts = pts[idx++];
-	                list[i]->m_qpLayer = 2;
-	                m_outputQueue.pushBack(*list[i]);
-	            }
-		}
-		else
-		{
-	        for (int i = 0; i < bframes; i++)
-	            if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
-	            {
-	                list[i]->m_reorderedPts = pts[idx++];
-	                m_outputQueue.pushBack(*list[i]);
-	            }
-		}
+	    for (int i = 0; i < bframes; i++)
+	        if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
+	        {
+	            list[i]->m_reorderedPts = pts[idx++];
+	            m_outputQueue.pushBack(*list[i]);
+	        }
 
 
         bool isKeyFrameAnalyse = (m_param->rc.cuTree || (m_param->rc.vbvBufferSize && m_param->lookaheadDepth));

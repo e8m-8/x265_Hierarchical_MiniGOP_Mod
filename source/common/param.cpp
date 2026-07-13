@@ -305,6 +305,7 @@ void x265_param_default(x265_param* param)
     param->rc.qCompress = 0.6;
     param->rc.ipFactor = 1.4f;
     param->rc.pbFactor = 1.3f;
+    param->rc.rbFactor = 1.0f;
     param->rc.bbFactor[0] = 0.8f;
     param->rc.bbFactor[1] = 1.3f;
     param->rc.bbFactor[2] = 0.9f;
@@ -699,6 +700,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         {
             param->rc.ipFactor = 1.1;
             param->rc.pbFactor = 1.0;
+            param->rc.rbFactor = 1.0;
             param->rc.bbFactor[0] = 1.0;
             param->rc.bbFactor[1] = 1.0;
             param->rc.bbFactor[2] = 1.0;
@@ -734,7 +736,8 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bEnableWeightedPred = 1;
             param->bEnableWeightedBiPred = 1;
             param->rc.ipFactor = 1.4f;
-            param->rc.pbFactor = 1.6f;
+            param->rc.pbFactor = 1.4f;
+            param->rc.rbFactor = 0.8f;
             param->rc.bbFactor[0] = 0.8f;
             param->rc.bbFactor[1] = 1.3f;
             if (param->rdLevel > 2)
@@ -760,8 +763,9 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bEnableWeightedPred = 1;
             param->bEnableWeightedBiPred = 1;
             param->rc.ipFactor = 1.4f;
-            param->rc.pbFactor = 1.6f;
-            param->rc.bbFactor[0] = 0.8f;
+            param->rc.pbFactor = 1.4f;
+            param->rc.rbFactor = 0.8f;
+            param->rc.bbFactor[0] = 1.0f;
             if (param->rdLevel > 2)
                 param->bEnableTransformSkip = 1;
             if (param->rdLevel > 4)
@@ -784,9 +788,10 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bEnableWeightedPred = 1;
             param->bEnableWeightedBiPred = 1;
             param->rc.ipFactor = 1.4f;
-            param->rc.pbFactor = 1.6f;
+            param->rc.pbFactor = 1.4f;
+            param->rc.rbFactor = 0.8f;
             param->rc.bbFactor[0] = 0.8f;
-            param->rc.bbFactor[1] = 1.4f;
+            param->rc.bbFactor[1] = 1.3f;
             param->rc.bbFactor[2] = 0.9f;
             if (param->rdLevel > 2)
                 param->bEnableTransformSkip = 1;
@@ -811,9 +816,10 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bEnableWeightedPred = 1;
             param->bEnableWeightedBiPred = 1;
             param->rc.ipFactor = 1.4f;
-            param->rc.pbFactor = 1.6f;
+            param->rc.pbFactor = 1.4f;
+            param->rc.rbFactor = 0.8f;
             param->rc.bbFactor[0] = 0.8f;
-            param->rc.bbFactor[1] = 1.4f;
+            param->rc.bbFactor[1] = 1.3f;
             param->rc.bbFactor[2] = 0.9f;
             if (param->rdLevel > 2)
                 param->bEnableTransformSkip = 1;
@@ -1319,6 +1325,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
             p->rc.bbFactor[4] = p->rc.bbFactor[0];
         }
     }
+    OPT2("brbratio", "rbratio") p->rc.rbFactor = atof(value);
     OPT("qcomp") p->rc.qCompress = atof(value);
     OPT("qpstep") p->rc.qpStep = atoi(value);
     OPT("cplxblur") p->rc.complexityBlur = atof(value);
@@ -1381,6 +1388,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     {
         p->rc.bStrictCbr = atobool(value);
         p->rc.pbFactor = 1.0;
+        p->rc.rbFactor = 1.0;
         p->rc.bbFactor[0] = 1.0;
         p->rc.bbFactor[1] = 1.0;
         p->rc.bbFactor[2] = 1.0;
@@ -1471,7 +1479,6 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("max-cll") bError |= sscanf(value, "%hu,%hu", &p->maxCLL, &p->maxFALL) != 2;
     OPT("min-luma") p->minLuma = (uint16_t)atoi(value);
     OPT("max-luma") p->maxLuma = (uint16_t)atoi(value);
-    OPT("uhd-bd") p->uhdBluray = atobool(value);
     else
         bExtraParams = true;
 
@@ -1479,6 +1486,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     if (bExtraParams)
     {
         if (0) ;
+        OPT("uhd-bd") p->uhdBluray = atobool(value);
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
@@ -2298,21 +2306,21 @@ void x265_print_params(x265_param* param)
         case 0:
             if (param->bFrameAdaptive == X265_B_ADAPT_AUTO)
             {
-                x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0]); break;
+                x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BRef-B-ratio    : %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.rbFactor); break;
             }
         case 1:
         case 2:
             x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio                   : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor); break;
         case 3:
-            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0]); break;
+            x265_log(param, X265_LOG_INFO, "IP- / PB- / BB- / BRef-B-ratio        : %0.2f / %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.rbFactor); break;
         case 4:
-            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1]); break;
+            x265_log(param, X265_LOG_INFO, "IP- / PB- / BB- / BRef-B-ratio        : %0.2f / %0.2f / %0.2f : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.rbFactor); break;
         case 5:
-            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2]); break;
+            x265_log(param, X265_LOG_INFO, "IP- / PB- / BB- / BRef-B-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2], param->rc.rbFactor); break;
         case 6:
-            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2], param->rc.bbFactor[3]); break;
+            x265_log(param, X265_LOG_INFO, "IP- / PB- / BB- / BRef-B-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2], param->rc.bbFactor[3], param->rc.rbFactor); break;
         case 7:
-            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BB-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f : %0.2f : %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2], param->rc.bbFactor[3], param->rc.bbFactor[4]); break;
+            x265_log(param, X265_LOG_INFO, "IP- / PB- / BB- / BRef-B-ratio        : %0.2f / %0.2f / %0.2f : %0.2f : %0.2f : %0.2f : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.bbFactor[1], param->rc.bbFactor[2], param->rc.bbFactor[3], param->rc.bbFactor[4], param->rc.rbFactor); break;
         }
     }
 
@@ -2562,7 +2570,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
         if (p->bframes)
         {
             s += snprintf(s, bufSize - (s - buf), " pbratio=%.2f", p->rc.pbFactor);
-            if (p->bEnableTemporalSubLayers > 2 || p->bFrameAdaptive == X265_B_ADAPT_AUTO)
+            if (p->bEnableTemporalSubLayers > 2)
             {
                 s += snprintf(s, bufSize - (s - buf), " bbratio=%.2f", p->rc.bbFactor[0]);
                 if (p->bEnableTemporalSubLayers > 3)
@@ -2582,6 +2590,8 @@ char *x265_param2string(x265_param* p, int padx, int pady)
                     }
                 }
             }
+            if (p->bEnableTemporalSubLayers > 2 || p->bFrameAdaptive == X265_B_ADAPT_AUTO)
+                s += snprintf(s, bufSize - (s - buf), " brbratio=%.2f", p->rc.rbFactor);
         }
     }
     s += snprintf(s, bufSize - (s - buf), " aq-mode=%d", p->rc.aqMode);
@@ -3037,6 +3047,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->rc.qCompress = src->rc.qCompress;
     dst->rc.ipFactor = src->rc.ipFactor;
     dst->rc.pbFactor = src->rc.pbFactor;
+    dst->rc.rbFactor = src->rc.rbFactor;
     dst->rc.bbFactor[0] = src->rc.bbFactor[0];
     dst->rc.bbFactor[1] = src->rc.bbFactor[1];
     dst->rc.bbFactor[2] = src->rc.bbFactor[2];
