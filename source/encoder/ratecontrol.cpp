@@ -1360,7 +1360,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     FrameData& curEncData = *curFrame->m_encData;
     m_curSlice = curEncData.m_slice;
     m_sliceType = m_curSlice->m_sliceType;
-    m_qpLayer = X265_MIN(X265_MAX(0, curFrame->m_qpLayer), 4);
+    m_qpLayer = X265_MIN(X265_MAX(0, curFrame->m_qpLayer), 6);
 
 #if ENABLE_SCC_EXT
     if(m_param->bEnableSCC)
