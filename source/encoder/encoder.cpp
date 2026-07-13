@@ -4234,8 +4234,11 @@ void Encoder::configure(x265_param *p)
         {
             if (p->bFrameAdaptive == X265_B_ADAPT_FAST)
             {
-                x265_log(p, X265_LOG_WARNING, "Adaptive B-frame placement 1 is not supported when using %d temporal sub-layers. Changed to 2.\n", p->bEnableTemporalSubLayers);
-                p->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
+                if (p->bEnableTemporalSubLayers == 3)
+                {
+                    x265_log(p, X265_LOG_WARNING, "Adaptive B-frame placement 1 is not supported when using %d temporal sub-layers. Changed to 2.\n", p->bEnableTemporalSubLayers);
+                    p->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
+                }
             }
             x265_log(p, X265_LOG_INFO, "Trellis Adaptive B-frames placement mode %d in maximum. %d temporal sub-layers.\n", p->bFrameAdaptive, p->bEnableTemporalSubLayers);
             if (p->lookaheadDepth < (p->bframes + 1) * 2 + 4)

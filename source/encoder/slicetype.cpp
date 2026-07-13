@@ -3364,7 +3364,7 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
     }
     if (m_param->bframes)
     {
-        if (m_param->bFrameAdaptive >= X265_B_ADAPT_TRELLIS)
+        if (m_param->bFrameAdaptive >= X265_B_ADAPT_TRELLIS || m_param->bFrameAdaptive == X265_B_ADAPT_FAST && m_param->bEnableTemporalSubLayers > 3)
         {
             if (numFrames > 1)
             {
@@ -3532,6 +3532,21 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                     numAnalyzed = j;
                     break;
                 }
+            }
+            if (m_param->bFrameAdaptive == X265_B_ADAPT_FAST && m_param->bEnableTemporalSubLayers > 3 && numAnalyzed <= numBFrames)
+            {
+                char best_paths[X265_BFRAME_MAX + 1][X265_LOOKAHEAD_MAX + 1] = { "", "P" };
+                int best_path_index = numAnalyzed % (X265_BFRAME_MAX + 1);
+
+                /* Perform the frame type analysis. */
+                for (int j = 2; j <= numAnalyzed; j++)
+                    slicetypePath(frames, j, best_paths);
+
+                numBFrames = (int)strcspn(best_paths[best_path_index], "P");
+
+                /* Load the results of the analysis into the frame types. */
+                for (int j = 1; j < numAnalyzed; j++)
+                    frames[j]->sliceType = best_paths[best_path_index][j - 1] == 'B' ? X265_TYPE_B : X265_TYPE_P;
             }
         }
         resetStart = bKeyframe ? 1 : X265_MIN(numBFrames + 2, numAnalyzed + 1);
@@ -3894,6 +3909,9 @@ void Lookahead::slicetypePath(Lowres **frames, int length, char(*best_paths)[X26
             best_cost = cost;
             idx ^= 1;
         }
+
+        if (m_param->bFrameAdaptive == X265_B_ADAPT_FAST && m_param->bEnableTemporalSubLayers > 3)
+            path *= 2;
     }
 
     /* Store the best path. */
