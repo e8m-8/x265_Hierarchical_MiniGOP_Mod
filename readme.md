@@ -37,15 +37,15 @@ Usage
    When ``--temporal-layers > 3`` , --bframe-bias should in the range of  [-90, 300].
 
    
-4. BB-ratio rate-control, using ':' to separate the independent factor like ``--pbratio`` for each layer or Ref to Non-Ref B-Frame:
+4. BB-ratio rate-control, using ':' to separate the independent factor like ``--pbratio`` for each layer and RB-ratio rate-control for Ref to Non-Ref B-Frame:
 
-   ``--bbratio=1.6:1.4:1.2`` for ``--temporal-layers = 5``.
+   ``--bbratio=1.6:1.4:1.2 --rbratio=0.8`` for ``--temporal-layers = 5``.
    
    ``--bbratio=1.3:1.1`` means Layer-1 / Layer-2 = 1.3, Layer-2 / Layer-3 = 1.2 for ``--temporal-layers = 4``.
    
    ``--bbratio=1.2`` equals ``--bbratio=1.2:1.2:1.2`` for ``--temporal-layers = 5``
 
-   ``--bbratio=1.2`` also equals or QP of [Non-Ref B-Frame] = 1.2 * QP of [Ref B-Frame] for ``--b-adapt = 3``.
+   ``--rbratio=0.8`` also equals or QP of [Non-Ref B-Frame] = 0.8 * QP of [Ref B-Frame] for ``--b-adapt = 3`` and ``--temporal-layers > 3``.
 
    Using ``--tune='minigop8'`` or ``--tune='minigop16'`` to quickly configure all settings by default.
 
@@ -55,7 +55,7 @@ Usage
   ![](Mod_MiniGOP.png) 
 
    
-6. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can enhance both BD-PSNR and BD-SSIM.
+6. Added ``'--bref-on-base-layer'`` for frame intervals <=4 in the base layer when using temporal sublayers, When the CRF is low, enabling this feature can using ``--ref=8`` to enhance both BD-PSNR and BD-SSIM.
 
    **WARNING: Experimental feature**
    ![](Mod_MiniGOP_Bref.png)
