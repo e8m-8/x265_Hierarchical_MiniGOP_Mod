@@ -2304,13 +2304,9 @@ void x265_print_params(x265_param* param)
         switch (param->bEnableTemporalSubLayers)
         {
         case 0:
-            if (param->bFrameAdaptive == X265_B_ADAPT_AUTO)
-            {
-                x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BRef-B-ratio    : %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.rbFactor); break;
-            }
         case 1:
         case 2:
-            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio                   : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor); break;
+            x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BRef-B-ratio    : %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.rbFactor); break;
         case 3:
             x265_log(param, X265_LOG_INFO, "IP- / PB- / BB- / BRef-B-ratio        : %0.2f / %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.bbFactor[0], param->rc.rbFactor); break;
         case 4:
@@ -2590,8 +2586,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
                     }
                 }
             }
-            if (p->bEnableTemporalSubLayers > 2 || p->bFrameAdaptive == X265_B_ADAPT_AUTO)
-                s += snprintf(s, bufSize - (s - buf), " brbratio=%.2f", p->rc.rbFactor);
+            s += snprintf(s, bufSize - (s - buf), " brbratio=%.2f", p->rc.rbFactor);
         }
     }
     s += snprintf(s, bufSize - (s - buf), " aq-mode=%d", p->rc.aqMode);
