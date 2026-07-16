@@ -321,7 +321,7 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_leadingNoBSatd = 0;
     m_ipOffset = 6.0 * X265_LOG2(m_param->rc.ipFactor);
     m_pbOffset = 6.0 * X265_LOG2(m_param->rc.pbFactor);
-    m_rbOffset = 6.0 * X265_LOG2(m_param->rc.rbFactor);
+    m_rbOffset = !!m_param->bBPyramid ? 6.0 * X265_LOG2(m_param->rc.rbFactor) : 0.0;
     m_bbOffset[0] = 0.0;
     m_bbOffset[1] = m_pbOffset;
     m_bbOffset[2] = m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[1] + 6.0 * X265_LOG2(m_param->rc.bbFactor[0]) : m_bbOffset[1];

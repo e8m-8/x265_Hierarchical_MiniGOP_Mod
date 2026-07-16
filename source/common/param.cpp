@@ -2304,6 +2304,18 @@ void x265_print_params(x265_param* param)
         switch (param->bEnableTemporalSubLayers)
         {
         case 0:
+            if (param->keyframeMax == 1)
+            {
+                break;
+            }
+            else if (!param->bframes)
+            {
+                x265_log(param, X265_LOG_INFO, "IP-ratio                              : %0.2f\n", param->rc.ipFactor); break;
+            }
+            else if (!param->bBPyramid)
+            {
+                x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio                   : %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor); break;
+            }
         case 1:
         case 2:
             x265_log(param, X265_LOG_INFO, "IP-ratio / PB-ratio / BRef-B-ratio    : %0.2f / %0.2f / %0.2f\n", param->rc.ipFactor, param->rc.pbFactor, param->rc.rbFactor); break;
