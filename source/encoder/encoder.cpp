@@ -4379,6 +4379,25 @@ void Encoder::configure(x265_param *p)
         }
     }
 
+    if (p->bEnableTemporalSubLayers == 2)
+    {
+        if (!p->bAllowNonConformance && p->bframes > 9)
+        {
+            x265_log(p, X265_LOG_WARNING, "The bframes must less than 10, change bframes = 9.\n");
+            p->bframes = 9;
+        }
+        if (!p->bBPyramid)
+        {
+            x265_log(p, X265_LOG_WARNING, "When using temporal sub-layers, --b-pyramid must on!\n");
+            p->bBPyramid = 1;
+        }
+        if (p->bframes > 3 && p->maxNumReferences < p->bframes / 2 + 3)
+        {
+            p->maxNumReferences = p->bframes / 2 + 3;
+            x265_log(p, X265_LOG_WARNING, "When bframes = %d in temporal-layers=2, --ref must >= %d. Changed to %d.\n", p->bframes, p->maxNumReferences, p->maxNumReferences);
+        }
+    }
+
     p->scenecutBias = (double)(p->scenecutBias / 100);
 
     if (p->logLevel < X265_LOG_INFO)

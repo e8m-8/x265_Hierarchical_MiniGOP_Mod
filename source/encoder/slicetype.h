@@ -278,7 +278,6 @@ protected:
     /*Compute index for positioning B-Ref frames*/
     void     placeBref(Frame** frames, int start, int end, int num, int *brefs);
     void     estimateHierarchicalCUPropagate(Lowres **frames, double averageDuration, int start, int end, int t_layer);
-    void     compCostBref(Lowres **frame, int start, int end, int num);
     void     compHierarchicalCost(Lowres **frames, int start, int end, int t_layer);
     void     vbvHierarchicalFrameCost(Lowres **frames, int start, int end, int nextNonB, int upR, int nextB, int miniGopEnd, int t_layer, int *idx);
     void     pushbackHierarchicalFrames(Frame *list[X265_BFRAME_MAX + 4], int start, int end, int t_layer, int64_t (*pts)[X265_BFRAME_MAX + 1], int *idx, int *brefs);
