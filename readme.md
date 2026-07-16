@@ -60,6 +60,12 @@ Usage
    **WARNING: Experimental feature**
    ![](Mod_MiniGOP_Bref.png)
 
+   
+7. ``temporal-layer=2`` refers to a situation where all B-slices at even positions are BREF and located in the base layer, while all B-slices at odd positions are Non-Ref-B and located in the enhanced layer.
+
+   
+8. Bug Fixed: Added VBVLookAhead, cuTree, and slicetypePathCost for All of ``--temporal-layers > 1`` and single-layer ``--b-adapt=3``.
+
 
 
 In certain episodes, employing higher pbratio and bbratio values (as per the earlier preset) yields the following appreciable improvements in BD-PSNR and BD-SSIM.
