@@ -4304,7 +4304,7 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
     while (i-- > idx)
     {
         curnonb = i;
-        while (frames[curnonb]->sliceType == X265_TYPE_B && curnonb > 0)
+        while (IS_X265_TYPE_B(frames[curnonb]->sliceType) && curnonb > 0)
             curnonb--;
 
         if (curnonb < idx)
