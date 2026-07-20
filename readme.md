@@ -14,7 +14,7 @@ Usage
 
    It is not recommended to use bframes greater than 12.
 
-   When ``--b-adapt=3 --temporal-layers=4/5/6/7 --bframes=N``, using a Hierarchical B-frame insertion.
+   When ``--b-adapt=3 --temporal-layers=4/5/6/7 --bframes=N (Odd) ``, using a Hierarchical B-frame insertion.
 
    Set the --bframes to at least: temporal-layers * 2 - 3.
 
