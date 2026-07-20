@@ -4373,6 +4373,11 @@ void Encoder::configure(x265_param *p)
                     x265_log(p, X265_LOG_WARNING, "--b-adapt %d is useless when --bframes = %d. Changed --bframes to %d.\n", p->bFrameAdaptive, p->bframes, p->bEnableTemporalSubLayers * 2 - 3);
                     p->bframes = p->bEnableTemporalSubLayers * 2 - 3;
                 }
+                else if (!(p->bframes % 2) && !!p->bEnableTemporalSubLayers)
+                {
+                    p->bframes = p->bframes - 1;
+                    x265_log(p, X265_LOG_WARNING, "When using %d Layer Hierarchical b-adapt = %d, the number of bframes should be odd; change it to %d.\n",p->bEnableTemporalSubLayers , p->bFrameAdaptive, p->bframes);
+                }
                 else
                     x265_log(p, X265_LOG_INFO, "--b-adapt %d is enabled for adaptive reference B-frame insertion.\n", p->bFrameAdaptive);
             }

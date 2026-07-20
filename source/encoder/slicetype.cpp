@@ -3600,7 +3600,7 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                     break;
                 }
             }
-            if (m_param->bFrameAdaptive == X265_B_ADAPT_FAST && m_param->bEnableTemporalSubLayers > 3 && numAnalyzed <= numBFrames)
+            if ((m_param->bFrameAdaptive == X265_B_ADAPT_FAST || m_param->bFrameAdaptive == X265_B_ADAPT_AUTO) && m_param->bEnableTemporalSubLayers > 3 && numAnalyzed <= numBFrames)
             {
                 char best_paths[X265_BFRAME_MAX + 1][X265_LOOKAHEAD_MAX + 1] = { "", "P" };
                 int best_path_index = numAnalyzed % (X265_BFRAME_MAX + 1);
@@ -3612,8 +3612,72 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                 numBFrames = (int)strcspn(best_paths[best_path_index], "P");
 
                 /* Load the results of the analysis into the frame types. */
-                for (int j = 1; j < numAnalyzed; j++)
-                    frames[j]->sliceType = best_paths[best_path_index][j - 1] == 'B' ? X265_TYPE_B : X265_TYPE_P;
+                if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO)
+                {
+                    for (int j = 1; j < numAnalyzed; j++)
+                        switch (best_paths[best_path_index][j - 1])
+                        {
+                        case 'J':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 1;
+                            break;
+                        case 'K':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 2;
+                            break;
+                        case 'L':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 3;
+                            break;
+                        case 'M':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 4;
+                            break;
+                        case 'N':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 5;
+                            break;
+                        case 'O':
+                            frames[j]->sliceType = X265_TYPE_BREF;
+                            frames[j]->m_tempLayer = 6;
+                            break;
+                        case 'B':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 1;
+                            break;
+                        case 'C':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 2;
+                            break;
+                        case 'D':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 3;
+                            break;
+                        case 'E':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 4;
+                            break;
+                        case 'F':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 5;
+                            break;
+                        case 'G':
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 6;
+                            break;
+                        case 'P':
+                            frames[j]->sliceType = X265_TYPE_P;
+                            frames[j]->m_tempLayer = 0;
+                            break;
+                        default:
+                            frames[j]->sliceType = X265_TYPE_B;
+                            frames[j]->m_tempLayer = 1;
+                            break;
+                        }
+                }
+                else
+                    for (int j = 1; j < numAnalyzed; j++)
+                        frames[j]->sliceType = best_paths[best_path_index][j - 1] == 'B' ? X265_TYPE_B : X265_TYPE_P;
             }
         }
         resetStart = bKeyframe ? 1 : X265_MIN(numBFrames + 2, numAnalyzed + 1);
@@ -3977,8 +4041,13 @@ void Lookahead::slicetypePath(Lowres **frames, int length, char(*best_paths)[X26
             idx ^= 1;
         }
 
-        if (m_param->bFrameAdaptive == X265_B_ADAPT_FAST && m_param->bEnableTemporalSubLayers > 3)
-            path *= 2;
+        if (m_param->bEnableTemporalSubLayers > 3 && m_param->bFrameAdaptive != X265_B_ADAPT_TRELLIS)
+        {
+            if (m_param->bFrameAdaptive == X265_B_ADAPT_FAST)
+                path *= 2;
+            else if (m_param->bFrameAdaptive == X265_B_ADAPT_AUTO && !!path)
+                path++;
+        }
     }
 
     /* Store the best path. */
@@ -4024,7 +4093,7 @@ HierarchicalResult Lookahead::slicetypeHierarchicalCost(Lowres** frames, int sta
     HierarchicalResult ref_result;
     if (len > 3 && t_layer < m_param->bEnableTemporalSubLayers - 1)
     {
-        for (int middle = start + 2; middle < end - 1; middle++)
+        for (int middle = start + 2; middle < end - 1; middle+=2)
         {
             HierarchicalResult cur;
             int64_t sub_cost = estGroup.singleCost(start, end, middle);
