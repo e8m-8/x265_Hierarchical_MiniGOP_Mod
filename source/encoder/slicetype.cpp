@@ -3470,10 +3470,6 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                             frames[j]->sliceType = X265_TYPE_BREF;
                             frames[j]->m_tempLayer = 5;
                             break;
-                        case 'O':
-                            frames[j]->sliceType = X265_TYPE_BREF;
-                            frames[j]->m_tempLayer = 6;
-                            break;
                         case 'B':
                             frames[j]->sliceType = X265_TYPE_B;
                             frames[j]->m_tempLayer = 1;
@@ -3636,10 +3632,6 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
                         case 'N':
                             frames[j]->sliceType = X265_TYPE_BREF;
                             frames[j]->m_tempLayer = 5;
-                            break;
-                        case 'O':
-                            frames[j]->sliceType = X265_TYPE_BREF;
-                            frames[j]->m_tempLayer = 6;
                             break;
                         case 'B':
                             frames[j]->sliceType = X265_TYPE_B;
