@@ -1,4 +1,4 @@
 #Attribute: 	     Values
-repositorychangeset: 1d117be
+repositorychangeset: 9cbe54d
 releasetagdistance: 1
-releasetag: 4.1
+releasetag: 4.1.MiniGOP.Mod
