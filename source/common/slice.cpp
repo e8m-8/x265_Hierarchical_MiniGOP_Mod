@@ -252,6 +252,10 @@ void Slice::setRefPicList(PicList& picList, int sLayerId)
         }
     }
 
+    if (m_param->bEnableGPB && m_origSliceType == P_SLICE)
+        for (int rIdx = 0; rIdx < m_numRefIdx[1]; rIdx++)
+            m_refFrameList[1][rIdx] = m_refFrameList[0][rIdx];
+
     for (int dir = 0; dir < 2; dir++)
         for (int numRefIdx = 0; numRefIdx < m_numRefIdx[dir]; numRefIdx++)
             m_refPOCList[dir][numRefIdx] = m_refFrameList[dir][numRefIdx]->m_poc;

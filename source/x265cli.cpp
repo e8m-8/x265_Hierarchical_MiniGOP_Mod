@@ -219,6 +219,8 @@ namespace X265_NS {
             "                                         This requires enabled b-pyramid. It comes at a significant cost.\n"
             "                                         Not recommended for bframes > 12.\n", param->bFrameAdaptive);
         H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
+        H1("   --[no-]gpb                    Encode P pictures as Generalized P/B (GPB) B-slices. Default disabled. Experimental feature.\n"
+            "                                 Can be used to match some hardware encoding files that do not contain P-slice.\n");
         H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
         H1("                                 Format of each line: framenumber frametype QP\n");
         H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,K,P,B,b.\n");

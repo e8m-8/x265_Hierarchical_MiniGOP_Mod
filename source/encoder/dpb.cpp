@@ -160,7 +160,8 @@ void DPB::prepareEncode(Frame *newFrame)
     if (slice->m_param->bEnableSCC && IS_X265_TYPE_I(type))
         slice->m_sliceType = P_SLICE;
 #endif
-
+    if (slice->m_param->bEnableGPB && type == X265_TYPE_P)
+        slice->m_sliceType = B_SLICE;
     if (type == X265_TYPE_B)
     {
         newFrame->m_encData->m_bHasReferences = false;
@@ -298,6 +299,10 @@ void DPB::prepareEncode(Frame *newFrame)
     else
 #endif
         slice->m_numRefIdx[1] = X265_MIN(newFrame->m_param->bBPyramid ? 2 : 1, slice->m_rps.numberOfPositivePictures);
+
+    if (slice->m_param->bEnableGPB && type == X265_TYPE_P)
+        slice->m_numRefIdx[1] = slice->m_numRefIdx[0];
+
 #if ENABLE_MULTIVIEW
     slice->setRefPicList(m_picList, layer, newFrame->refPicSetInterLayer0, newFrame->refPicSetInterLayer1);
 #else

@@ -2178,6 +2178,9 @@ typedef struct x265_param
     /*Frame level RateControl Configuration*/
     int     bConfigRCFrame;
     int    isAbrLadderEnable;
+
+    /* Enabled Generalized P/B (GPB) B-slices*/
+    int    bEnableGPB;
 } x265_param;
 
 /* x265_param_alloc:

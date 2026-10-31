@@ -1361,6 +1361,8 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     FrameData& curEncData = *curFrame->m_encData;
     m_curSlice = curEncData.m_slice;
     m_sliceType = m_curSlice->m_sliceType;
+    if (m_param->bEnableGPB && m_sliceType == B_SLICE && curFrame->m_lowres.sliceType == X265_TYPE_P)
+        m_sliceType = P_SLICE;
     m_qpLayer = X265_MIN(X265_MAX(0, curFrame->m_qpLayer), 6);
     m_nrbType = X265_MIN(X265_MAX(0, curFrame->m_lowres.sliceType - 4), 1);
 
@@ -1984,8 +1986,10 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
     {
         /* B-frames don't have independent rate control, but rather get the
          * average QP of the two adjacent P-frames + an offset */
-        Slice* prevRefSlice = m_curSlice->m_refFrameList[0][0]->m_encData->m_slice;
-        Slice* nextRefSlice = m_curSlice->m_refFrameList[1][0]->m_encData->m_slice;
+        Frame* prevRefFrame = m_curSlice->m_refFrameList[0][0];
+        Frame* nextRefFrame = m_curSlice->m_refFrameList[1][0];
+        Slice* prevRefSlice = prevRefFrame->m_encData->m_slice;
+        Slice* nextRefSlice = nextRefFrame->m_encData->m_slice;
         double q0 = m_curSlice->m_refFrameList[0][0]->m_encData->m_avgQpRc;
         double q1 = m_curSlice->m_refFrameList[1][0]->m_encData->m_avgQpRc;
         bool i0 = prevRefSlice->m_sliceType == I_SLICE;
@@ -1996,7 +2000,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         // Skip taking a reference frame before the Scenecut if ABR has been reset.
         if (m_lastAbrResetPoc >= 0)
         {
-            if (prevRefSlice->m_sliceType == P_SLICE && prevRefSlice->m_poc < m_lastAbrResetPoc)
+            if ((prevRefSlice->m_sliceType == P_SLICE || (m_param->bEnableGPB && prevRefSlice->m_origSliceType == P_SLICE)) && prevRefSlice->m_poc < m_lastAbrResetPoc)
             {
                 i0 = i1;
                 dt0 = dt1;
@@ -2004,9 +2008,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             }
         }
 
-        if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
+        if (prevRefSlice->m_sliceType == B_SLICE && prevRefFrame->m_lowres.sliceType == X265_TYPE_BREF && IS_REFERENCED(prevRefFrame))
             q0 -= ((m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0)) / 2;
-        if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
+        if (nextRefSlice->m_sliceType == B_SLICE && nextRefFrame->m_lowres.sliceType == X265_TYPE_BREF && IS_REFERENCED(nextRefFrame))
             q1 -= ((m_param->bEnableTemporalSubLayers > 2 ? m_bbOffset[m_qpLayer] : m_pbOffset) + (m_nrbType ? m_rbOffset : 0.0)) / 2;
         if (i0 && i1)
             q = (q0 + q1) / 2 + m_ipOffset;
