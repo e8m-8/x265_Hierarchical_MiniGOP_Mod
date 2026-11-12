@@ -34,6 +34,7 @@ namespace X265_NS {
 
 class CUData;
 class Entropy;
+class Slice;
 struct TUEntropyCodingParameters;
 
 struct QpParam
@@ -53,9 +54,10 @@ struct QpParam
             rem = qpScaled % 6;
             per = qpScaled / 6;
             qp  = qpScaled;
-            lambda2 = (int64_t)(x265_lambda2_tab[qp - QP_BD_OFFSET] * 256. + 0.5);
-            lambda  = (int32_t)(x265_lambda_tab[qp - QP_BD_OFFSET] * 256. + 0.5);
-            X265_CHECK((x265_lambda_tab[qp - QP_BD_OFFSET] * 256. + 0.5) < (double)MAX_INT, "x265_lambda_tab[] value too large\n");
+            int lambdaIdx = x265_clip3(QP_MIN, QP_MAX_MAX, qp - QP_BD_OFFSET);
+            lambda2 = (int64_t)(x265_lambda2_tab[lambdaIdx] * 256. + 0.5);
+            lambda  = (int32_t)(x265_lambda_tab[lambdaIdx] * 256. + 0.5);
+            X265_CHECK((x265_lambda_tab[lambdaIdx] * 256. + 0.5) < (double)MAX_INT, "x265_lambda_tab[] value too large\n");
         }
     }
 };
@@ -86,8 +88,22 @@ protected:
     int                m_rdoqLevel;
     int32_t            m_psyRdoqScale;  // dynamic range [0,50] * 256 = 14-bits
     int16_t*           m_resiDctCoeff;
-    int16_t*           m_fencDctCoeff;
     int16_t*           m_fencShortBuf;
+
+    enum { SOURCE_DCT_COEFFS = 16 + 64 + 256 + 1024 };
+
+    struct SourceDctCache
+    {
+        /* Slice objects can be recycled, so the picture order count is part of the key. */
+        const Slice *slice;
+        int poc;
+        uint32_t cuAddr;
+        uint32_t absPartIdx;
+        int16_t* coeff;
+        int16_t* pixels;
+
+        SourceDctCache() : slice(NULL), poc(0), cuAddr(0), absPartIdx(0), coeff(NULL), pixels(NULL) {}
+    } m_sourceDctCache[NUM_TR_SIZE];
 
     enum { IEP_RATE = 32768 }; /* FIX15 cost of an equal probable bit */
 
@@ -125,7 +141,7 @@ public:
         // NOTE: cgBlkPos+1 may more than 63, it is invalid for shift,
         //       but in this case, both cgPosX and cgPosY equal to (trSizeCG - 1),
         //       the sigRight and sigLower will clear value to zero, the final result will be correct
-        const uint32_t sigPos = (uint32_t)(sigCoeffGroupFlag64 >> (cgBlkPos + 1)); // just need lowest 7-bits valid
+        const uint32_t sigPos = (uint32_t)((sigCoeffGroupFlag64 >> cgBlkPos) >> 1); // just need lowest 7-bits valid
 
         // TODO: instruction BT is faster, but _bittest64 still generate instruction 'BT m, r' in VS2012
         const uint32_t sigRight = (cgPosX != (trSizeCG - 1)) & sigPos;
@@ -138,7 +154,7 @@ public:
     {
         X265_CHECK(cgBlkPos < 64, "cgBlkPos is too large\n");
         // NOTE: unsafe shift operator, see NOTE in calcPatternSigCtx
-        const uint32_t sigPos = (uint32_t)(cgGroupMask >> (cgBlkPos + 1)); // just need lowest 8-bits valid
+        const uint32_t sigPos = (uint32_t)((cgGroupMask >> cgBlkPos) >> 1); // just need lowest 8-bits valid
         const uint32_t sigRight = (cgPosX != (trSizeCG - 1)) & sigPos;
         const uint32_t sigLower = (cgPosY != (trSizeCG - 1)) & (sigPos >> (trSizeCG - 1));
 
@@ -154,13 +170,15 @@ protected:
 
     uint32_t signBitHidingHDQ(int16_t* qcoeff, int32_t* deltaU, uint32_t numSig, const TUEntropyCodingParameters &codingParameters, uint32_t log2TrSize);
 
-    template<uint32_t log2TrSize>
-    uint32_t rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, uint32_t absPartIdx, bool usePsy);
+    template <uint32_t log2TrSize>
+    uint32_t rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, uint32_t absPartIdx, bool usePsy,
+                      const pixel *fenc, uint32_t fencStride);
 
-public:
-    typedef uint32_t (Quant::*rdoQuant_t)(const CUData& cu, int16_t* dstCoeff, TextType ttype, uint32_t absPartIdx, bool usePsy);
+  public:
+    typedef uint32_t (Quant::*rdoQuant_t)(const CUData &cu, int16_t *dstCoeff, TextType ttype, uint32_t absPartIdx,
+                                          bool usePsy, const pixel *fenc, uint32_t fencStride);
 
-private:
+  private:
     static rdoQuant_t rdoQuant_func[NUM_CU_DEPTH];
 };
 }

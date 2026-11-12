@@ -367,6 +367,9 @@ static const struct option long_options[] =
     { "dup-threshold", required_argument, NULL, 0 },
     { "mcstf",                 no_argument, NULL, 0 },
     { "no-mcstf",              no_argument, NULL, 0 },
+    { "mcstf-ref-range",       required_argument, NULL, 0 },
+    { "selective-mcstf",       no_argument, NULL, 0 },
+    { "no-selective-mcstf",    no_argument, NULL, 0 },
 #if ENABLE_ALPHA
     { "alpha",                 no_argument, NULL, 0 },
 #endif
@@ -407,10 +410,13 @@ static const struct option long_options[] =
     { "aom-film-grain", required_argument, NULL, 0 },
     { "frame-rc",no_argument, NULL, 0 },
     { "no-frame-rc",no_argument, NULL, 0 },
-    { 0, 0, 0, 0 },
-    { 0, 0, 0, 0 },
-    { 0, 0, 0, 0 },
-    { 0, 0, 0, 0 },
+    { "threaded-me", no_argument, NULL, 0 },
+    { "no-threaded-me", no_argument, NULL, 0 },
+    /* Foveated encoding options */
+    { "fovea-gaze",      required_argument, NULL, 0 },
+    { "fovea-delta",     required_argument, NULL, 0 },
+    { "fovea-sigma",     required_argument, NULL, 0 },
+    { "fovea-gaze-file", required_argument, NULL, 0 },
     { 0, 0, 0, 0 }
 };
 
@@ -443,6 +449,7 @@ static const struct option long_options[] =
         char** orgArgv;
         char** argString;
         char *stringPool;
+        char* inputfn[MAX_VIEWS];
 
         /* ABR ladder settings */
         bool isAbrLadderConfig;
@@ -463,6 +470,8 @@ static const struct option long_options[] =
                 input[i] = NULL;
             for (int i = 0; i < MAX_LAYERS; i++)
                 recon[i] = NULL;
+            for (int i = 0; i < MAX_VIEWS; i++)
+                inputfn[i] = NULL;
             output = NULL;
             qpfile = NULL;
             zoneFile = NULL;

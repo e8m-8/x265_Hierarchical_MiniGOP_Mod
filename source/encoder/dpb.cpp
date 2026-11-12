@@ -80,8 +80,6 @@ void DPB::recycleUnreferenced()
 
         if (curFrame->m_valid && !curFrame->m_encData->m_bHasReferences && !curFrame->m_countRefEncoders && !isMCSTFReferenced)
         {
-            curFrame->m_bChromaExtended = false;
-
             if (curFrame->m_param->bEnableTemporalFilter)
                 *curFrame->m_isSubSampled = false;
 
@@ -94,6 +92,13 @@ void DPB::recycleUnreferenced()
             {
                 curFrame->m_reconRowFlag[row].set(0);
                 curFrame->m_reconColCount[row].set(0);
+
+                uint32_t m_numCols = (curFrame->m_fencPic->m_picWidth + curFrame->m_param->maxCUSize - 1) / curFrame->m_param->maxCUSize;
+                for (uint32_t col = 0; col < m_numCols; col++)
+                {
+                    uint32_t ctuAddr = row * m_numCols + col;
+                    curFrame->m_ctuMEFlags[ctuAddr].set(0);
+                }
             }
 
             // iterator is invalidated by remove, restart scan

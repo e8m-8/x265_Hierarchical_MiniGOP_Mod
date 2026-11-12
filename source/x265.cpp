@@ -208,7 +208,7 @@ static bool parseAbrConfig(FILE* abrConfig, CLIOptions cliopt[], uint8_t numEnco
         {
             argv[argc] = strPool;
             strPool += strlen(token) + 1;
-            strPoolSize -= (int)strlen(token) + 1;
+            strPoolSize = strPoolSize - (int)strlen(token) + 1;
             strcpy(argv[argc], token);
             token = strtok(NULL, " ");
             argc++;
@@ -269,6 +269,7 @@ static bool setRefContext(CLIOptions cliopt[], uint32_t numEncodes)
 
 int main(int argc, char **argv)
 {
+
 #if HAVE_VLD
     // This uses Microsoft's proprietary WCHAR type, but this only builds on Windows to start with
     VLDSetReportOptions(VLD_OPT_REPORT_TO_DEBUGGER | VLD_OPT_REPORT_TO_FILE, L"x265_leaks.txt");

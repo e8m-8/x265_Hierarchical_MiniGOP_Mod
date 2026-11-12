@@ -174,7 +174,14 @@ cglobal safe_intel_cpu_indicator_init
     sub  rsp, 32 ; shadow space
 %endif
     and  rsp, ~31
+%if WIN64
+    lea rax, [intel_cpu_indicator_init]
+    call rax
+%elif UNIX64 && FORMAT_ELF
+    call [rel intel_cpu_indicator_init wrt ..plt]
+%else
     call intel_cpu_indicator_init
+%endif
     leave
 %if ARCH_X86_64
     pop r14
@@ -194,3 +201,4 @@ cglobal safe_intel_cpu_indicator_init
     pop r1
     pop r0
     ret
+SECTION_IBT_SHSTK

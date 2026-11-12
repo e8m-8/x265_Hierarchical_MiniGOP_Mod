@@ -2,6 +2,102 @@
 Release Notes
 *************
 
+Version 4.3
+===========
+
+Release date - 31st July 2026
+
+New feature
+-----------
+1. LoongArch64 architecture support
+2. Foveated encoding - spatially varies quality around a gaze point, spending fewer bits in the viewer's periphery.
+3. Selective (noise-based) MCSTF filtering avoiding unnecessary filtering cost/quality impact on low-noise content.
+
+Enhancements to existing features
+----------------------------------
+1. MCSTF : Reworked Multi-threaded motion estimation and bilateral filtering, HME decoupled from the b-adapt flow, lowres planes generated with HM-equivalent averaging, TestBench harness support and profiling stats.
+2. Visual Studio 2026 (vc18) build scripts.
+3. Migrated continuous integration from Bitbucket Pipelines to GitHub Actions, with code-quality checks and smoke tests on pull requests.
+
+API changes
+-----------
+1. Foveated encoding command-line options: :option:`--fovea-gaze`, :option:`--fovea-delta`, :option:`--fovea-sigma`, and :option:`--fovea-gaze-file`.
+2. MCSTF command-line options: :option:`--selective-mcstf` and :option:`--mcstf-ref-range`.
+3. Removed the MCSTF param-only options: temporalFilterStrength and searchRangeForLayers. Callers referencing the removed fields must be updated.
+
+Optimizations
+-------------
+1. LoongArch64 SIMD optimizations across the loopfilter, ipfilter, DCT, motion compensation, block copy, pixel processing and intra-prediction modules.
+2. AArch64 SIMD optimizations: improved Neon and SVE DCT16/DCT32, stride-aware DCT, new SVE2 implementations of psyCost, sa8d and satd, and faster Neon sa8d, satd and psyCost (including 12-bit sa8d).
+3. AVX2 implementations for the MCSTF kernels resulted in speed up of 2x when combined with multithreading.
+4. Threaded Motion Estimation: Early exit diamond search
+
+Bug fixes
+---------
+1. Resolve ASAN/UBSAN reported out-of-bounds accesses and undefined behavior.
+2. Fix TestBench segfault at high bit depth caused by alias trampolines.
+3. Resolve TSAN data races in weight-analysis chroma extension, rate-control row stats, threaded-ME, and shared encoder state.
+4. Fix MCSTF segfault and fix threaded-me crashes and multi-pool subscription issue
+5. Fix scenecut not being active when :option:`--bframes` is 0.
+6. Fix incorrect thread-pool size and regression in :option:`--pools` behaviour
+7. Fix bitstream error when VUI timing info is disabled.
+8. Fix i686 build failure (non-PC-relative PLT references) and PowerPC64 build with Clang.
+9. Fix AArch64 filter-prim-sve test failures.
+10. CPU feature detection fixes for OpenBSD/FreeBSD (elf_aux_info) and PowerPC.
+11. Silence Clang -Wnontrivial-memcall and -Wundef warnings; assorted build-warning cleanups.
+
+Known issues
+------------
+1. Performance regression observed with the threaded-me feature on high-frequency systems and higher resolutions (4k).
+2. Inconsistent hash mismatch with abr-ladder feature
+
+Version 4.2
+===========
+
+Release date - 19th April, 2026.
+
+New feature
+-----------
+1. Threaded Motion Estimation (Experimental feature)-It uses a dedicated threadpool to precompute Motion Estimation in parallel.Improves encoding speed upto 1.5x for 1080p & lower resolution on multi core machines with low frequency setting. On high frequency systems or on machines with low number of cores, the overhead of additional Motion estimation work may outweigh parallelism
+
+Enhancements to existing features
+-------------
+
+1.Add new Levels 6.3 to 7.2 specified in ITU-T H.265 (V9) (09/2023) and above
+2.Improve Slices feature with check zeroMv
+3.Enable frame parallelism with MCSTF feature
+4.Updated support to signal AOM FGM params
+5.Improve quality with SBRC feature
+6.Updated DolbyVision P5 VUI defaults
+
+API changes
+-----------
+1. API Support to enable Threaded Motion Estimation(--threaded-me)
+
+Optimizations
+-------------
+1. RISC V optimizations including SAD, SATD, DCT, IDCT, block copy, pixel utilities, SAO, loopfilter, transpose kernels resulting in 2x encoding speed.
+2. ARM SIMD optimizations including the use of NEON and SVE instruction set extensions. The following algorithms now have optimized SIMD implementations: DST, IDCT, SSE, SSD ,intra_pred_planar, pelFilterLumaStrong, interpolation, planecopy, dequant_normal, blockcopy, pixel variance resulting in 8% faster encoding speed compared to v4.1
+
+Bug fixes
+---------
+1. Fix memory leaks (no command line option, SEI buffer, analysis save/load)
+2. Fix chroma qp offset for non yuv444 inputs
+3. Fix max supported input resolution
+4. Fix bugs with ARM SIMD optimizations
+5. Fix Alpha and Multiview feature flag support in x265_config
+6. Fix test harness issues, CMake errors
+7. Fix inconsistent output with aq-motion
+8. Fix crash with hist-scenecut on high bit-depth builds
+9. Fix lookahead concurrency bug
+10. Fix shared link issue (R_X86_64_PC32), yuv recon output issue, rd-refine and dynamic-refine issue, inputs for Windows named pipe,weighted prediction delta_chroma_offset, crf and vbv issue in abr-ladder, psnr and ssim reported with MCSTF feature, internally overflowed VBV variables
+
+Known issues
+------------
+1. Output mismatch between analysis save & load with cutree with reuse level < 10
+2. Inconsistent hash mismatch with abr-ladder feature
+3. Performance regression observed with threaded-me feature on high frequency systems and for higher resolutions (4k)
+
 Version 4.1
 ===========
 

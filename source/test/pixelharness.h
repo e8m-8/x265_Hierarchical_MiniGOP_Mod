@@ -48,6 +48,7 @@ protected:
     ALIGN_VAR_64(pixel,    pbuf2[BUFFSIZE]);
     ALIGN_VAR_64(pixel,    pbuf3[BUFFSIZE]);
     ALIGN_VAR_64(pixel,    pbuf4[BUFFSIZE]);
+    ALIGN_VAR_64(pixel,    pbuf5[BUFFSIZE]);
     ALIGN_VAR_64(int,      ibuf1[BUFFSIZE]);
     ALIGN_VAR_64(int8_t,   psbuf1[BUFFSIZE]);
     ALIGN_VAR_64(int8_t,   psbuf2[BUFFSIZE]);
@@ -109,7 +110,7 @@ protected:
     bool check_addAvg_aligned(addAvg_t, addAvg_t);
     bool check_saoCuOrgE0_t(saoCuOrgE0_t ref, saoCuOrgE0_t opt);
     bool check_saoCuOrgE1_t(saoCuOrgE1_t ref, saoCuOrgE1_t opt);
-    bool check_saoCuOrgE2_t(saoCuOrgE2_t ref[], saoCuOrgE2_t opt[]);
+    bool check_saoCuOrgE2_t(saoCuOrgE2_t ref[2], saoCuOrgE2_t opt[2]);
     bool check_saoCuOrgE3_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt);
     bool check_saoCuOrgE3_32_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt);
     bool check_saoCuOrgB0_t(saoCuOrgB0_t ref, saoCuOrgB0_t opt);
@@ -120,6 +121,7 @@ protected:
     bool check_saoCuStatsE3_t(saoCuStatsE3_t ref, saoCuStatsE3_t opt);
     bool check_planecopy_sp(planecopy_sp_t ref, planecopy_sp_t opt);
     bool check_planecopy_cp(planecopy_cp_t ref, planecopy_cp_t opt);
+    bool check_planecopy_pp_shr(planecopy_pp_t ref, planecopy_pp_t opt);
     bool check_cutree_propagate_cost(cutree_propagate_cost ref, cutree_propagate_cost opt);
     bool check_cutree_fix8_pack(cutree_fix8_pack ref, cutree_fix8_pack opt);
     bool check_cutree_fix8_unpack(cutree_fix8_unpack ref, cutree_fix8_unpack opt);

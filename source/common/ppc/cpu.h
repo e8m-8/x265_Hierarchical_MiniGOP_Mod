@@ -1,7 +1,7 @@
 /*****************************************************************************
- * Copyright (C) 2022-2023 MulticoreWare, Inc
+ * Copyright (C) 2026 MulticoreWare, Inc
  *
- * Authors: David Chen <david.chen@myais.com.cn>
+ * Authors: Brad Smith <brad@comstyle.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,34 +21,19 @@
  * For more information, contact us at license @ x265.com.
  *****************************************************************************/
 
-// This file contains the macros written using NEON instruction set
-// that are also used by the SVE2 functions
+#ifndef X265_COMMON_PPC_CPU_H
+#define X265_COMMON_PPC_CPU_H
 
-#include "asm.S"
+#include "x265.h"
 
-.arch           armv8-a
+static inline uint32_t ppc_cpu_detect()
+{
+    uint32_t flags = 0;
 
-// void cpy1Dto2D_shr(int16_t* dst, const int16_t* src, intptr_t dstStride, int shift)
-.macro cpy1Dto2D_shr_start
-    add             x2, x2, x2
-    dup             v0.8h, w3
-    cmeq            v1.8h, v1.8h, v1.8h
-    sshl            v1.8h, v1.8h, v0.8h
-    sri             v1.8h, v1.8h, #1
-    neg             v0.8h, v0.8h
-.endm
+#if HAVE_ALTIVEC
+    flags |= X265_CPU_ALTIVEC;
+#endif
+    return flags;
+}
 
-.macro cpy2Dto1D_shr_start
-    add             x2, x2, x2
-    dup             v0.8h, w3
-    cmeq            v1.8h, v1.8h, v1.8h
-    sshl            v1.8h, v1.8h, v0.8h
-    sri             v1.8h, v1.8h, #1
-    neg             v0.8h, v0.8h
-.endm
-
-const xtn_xtn2_table, align=4
-.byte    0, 2, 4, 6, 8, 10, 12, 14
-.byte    16, 18, 20, 22, 24, 26, 28, 30
-endconst
-
+#endif // ifndef X265_COMMON_PPC_CPU_H

@@ -34,10 +34,12 @@ class ThreadPool;
 class WorkerThread;
 class BondedTaskGroup;
 
-#if X86_64
+#if X86_64 || X265_ARCH_ARM64
 typedef uint64_t sleepbitmap_t;
+#define SLEEPBITMAP_LOAD(ptr) ATOMIC64_LOAD(ptr)
 #else
 typedef uint32_t sleepbitmap_t;
+#define SLEEPBITMAP_LOAD(ptr) ATOMIC_LOAD(ptr)
 #endif
 
 static const sleepbitmap_t ALL_POOL_THREADS = (sleepbitmap_t)-1;
@@ -53,8 +55,8 @@ public:
     ThreadPool*   m_pool;
     sleepbitmap_t m_ownerBitmap;
     int           m_jpId;
-    int           m_sliceType;
-    bool          m_helpWanted;
+    AtomicInt32   m_sliceType;
+    AtomicBool    m_helpWanted;
     bool          m_isFrameEncoder; /* rather ugly hack, but nothing better presents itself */
 
     JobProvider()
@@ -73,7 +75,7 @@ public:
 
     // Will awaken one idle thread, preferring a thread which most recently
     // performed work for this provider.
-    void tryWakeOne();
+    bool tryWakeOne();
 };
 
 class ThreadPool
@@ -87,7 +89,7 @@ public:
 #if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 
     GROUP_AFFINITY m_groupAffinity;
 #endif
-    bool          m_isActive;
+    AtomicBool           m_isActive;
 
     JobProvider** m_jpTable;
     WorkerThread* m_workers;
@@ -102,10 +104,12 @@ public:
     void setThreadNodeAffinity(void *numaMask);
     int  tryAcquireSleepingThread(sleepbitmap_t firstTryBitmap, sleepbitmap_t secondTryBitmap);
     int  tryBondPeers(int maxPeers, sleepbitmap_t peerBitmap, BondedTaskGroup& master);
-    static ThreadPool* allocThreadPools(x265_param* p, int& numPools, bool isThreadsReserved);
+
+    static ThreadPool* allocThreadPools(x265_param* p, int& numPools, int& numTmePools, bool isThreadsReserved);
     static int  getCpuCount();
     static int  getNumaNodeCount();
-    static void getFrameThreadsCount(x265_param* p,int cpuCount);
+    static int  getFrameThreadsCount(x265_param* p, int cpuCount);
+    static int  configureTmeThreadCount(x265_param* p, int cpuCount);
 };
 
 /* Any worker thread may enlist the help of idle worker threads from the same
@@ -139,7 +143,7 @@ public:
      * maxPeers worker threads will call your processTasks() method. */
     int tryBondPeers(JobProvider& jp, int maxPeers)
     {
-        int count = jp.m_pool->tryBondPeers(maxPeers, jp.m_ownerBitmap, *this);
+        int count = jp.m_pool->tryBondPeers(maxPeers, SLEEPBITMAP_LOAD(&jp.m_ownerBitmap), *this);
         m_bondedPeerCount += count;
         return count;
     }
@@ -168,6 +172,20 @@ public:
      * 0 and jp.m_numWorkers - 1 */
     virtual void processTasks(int workerThreadId) = 0;
 };
+
+/**
+ * @brief Return the highest current CPU frequency in MHz across all cores, or 0.0 if unavailable.
+ *
+ * The value reflects the live frequency as reported by the cpufreq subsystem,
+ * which accounts for the active scaling governor and EPP hint.
+ *
+ * Platform support:
+ *   Linux   – iterates /sys/devices/system/cpu/cpuN/cpufreq/scaling_cur_freq (kHz)
+ *              for all cores and returns the maximum; falls back to /proc/cpuinfo
+ *   macOS   – sysctl hw.cpufrequency (Hz)
+ *   Windows – registry ~MHz under CentralProcessor\0
+ */
+double getCPUFrequencyMHz();
 
 } // end namespace X265_NS
 

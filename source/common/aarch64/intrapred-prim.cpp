@@ -4,6 +4,7 @@
 
 #if HAVE_NEON
 #include "arm64-utils.h"
+#include "mem-neon.h"
 #include <arm_neon.h>
 
 using namespace X265_NS;
@@ -21,7 +22,20 @@ void intraFilter_neon(const pixel* samples, pixel* filtered) /* 1:2:1 filtering 
     uint16x8_t two_vec = vdupq_n_u16(2);
 #if !HIGH_BIT_DEPTH
     {
-        for(int i = 0; i < tuSize2 + tuSize2; i+=8)
+        // Avoid reading samples[-1]. build it from the loaded sample1 instead.
+        // The first value is unused since filtered[0] is overwritten below anyway.
+        {
+            uint8x8_t raw1 = vld1_u8(&samples[0]);
+            uint16x8_t sample1 = vmovl_u8(raw1);
+            uint16x8_t sample2 = vmovl_u8(vext_u8(raw1, raw1, 7));
+            uint16x8_t sample3 = vmovl_u8(vld1_u8(&samples[1]));
+
+            uint16x8_t result1 = vaddq_u16(vshlq_n_u16(sample1,1), sample2 );
+            uint16x8_t result2 = vaddq_u16(sample3, two_vec);
+            uint16x8_t result3 = vaddq_u16(result1,result2);
+            vst1_u8(&filtered[0] , vmovn_u16(vshrq_n_u16(result3, 2)));
+        }
+        for(int i = 8; i < tuSize2 + tuSize2; i+=8)
          {
             uint16x8_t sample1 = vmovl_u8(vld1_u8(&samples[i]));
             uint16x8_t sample2 = vmovl_u8(vld1_u8(&samples[i-1]));
@@ -35,7 +49,17 @@ void intraFilter_neon(const pixel* samples, pixel* filtered) /* 1:2:1 filtering 
     }
 #else
     {
-        for(int i = 0; i < tuSize2 + tuSize2; i+=8)
+        {
+            uint16x8_t sample1 = vld1q_u16(&samples[0]);
+            uint16x8_t sample2 = vextq_u16(sample1, sample1, 7);
+            uint16x8_t sample3 = vld1q_u16(&samples[1]);
+
+            uint16x8_t result1 = vaddq_u16(vshlq_n_u16(sample1,1), sample2 );
+            uint16x8_t result2 = vaddq_u16(sample3, two_vec);
+            uint16x8_t result3 = vaddq_u16(result1,result2);
+            vst1q_u16(&filtered[0] , vshrq_n_u16(result3, 2));
+        }
+        for(int i = 8; i < tuSize2 + tuSize2; i+=8)
         {
             uint16x8_t sample1 = vld1q_u16(&samples[i]);
             uint16x8_t sample2 = vld1q_u16(&samples[i-1]);
@@ -59,7 +83,7 @@ void intraFilter_neon(const pixel* samples, pixel* filtered) /* 1:2:1 filtering 
     filtered[tuSize2 + tuSize2] = leftLast;
 }
 
-template<int width>
+template<int width, bool bTranspose>
 void intra_pred_ang_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix0, int dirMode, int bFilter)
 {
     int width2 = width << 1;
@@ -205,7 +229,7 @@ void intra_pred_ang_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix0, i
     }
 
     // Flip for horizontal.
-    if (horMode)
+    if (horMode && bTranspose)
     {
         if (width == 8)
         {
@@ -244,39 +268,7 @@ void all_angs_pred_neon(pixel *dest, pixel *refPix, pixel *filtPix, int bLuma)
         pixel *srcPix  = (g_intraFilterFlags[mode] & size ? filtPix  : refPix);
         pixel *out = dest + ((mode - 2) << (log2Size * 2));
 
-        intra_pred_ang_neon<size>(out, size, srcPix, mode, bLuma);
-
-        // Optimize code don't flip buffer
-        bool modeHor = (mode < 18);
-
-        // transpose the block if this is a horizontal mode
-        if (modeHor)
-        {
-            if (size == 8)
-            {
-                transpose8x8(out, out, size, size);
-            }
-            else if (size == 16)
-            {
-                transpose16x16(out, out, size, size);
-            }
-            else if (size == 32)
-            {
-                transpose32x32(out, out, size, size);
-            }
-            else
-            {
-                for (int k = 0; k < size - 1; k++)
-                {
-                    for (int l = k + 1; l < size; l++)
-                    {
-                        pixel tmp         = out[k * size + l];
-                        out[k * size + l] = out[l * size + k];
-                        out[l * size + k] = tmp;
-                    }
-                }
-            }
-        }
+        intra_pred_ang_neon<size, false>(out, size, srcPix, mode, bLuma);
     }
 }
 
@@ -398,6 +390,136 @@ void planar_pred_neon(pixel * dst, intptr_t dstStride, const pixel * srcPix, int
     break;
         }
 }
+
+#if !HIGH_BIT_DEPTH
+void intra_pred_planar4_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix,
+                             int /*dirMode*/, int /*bFilter*/)
+{
+    const int log2Size = 2;
+    const int blkSize = 1 << log2Size;
+
+    uint8x16_t src = vld1q_u8(srcPix + 1);
+
+    uint8x8_t above =
+        vreinterpret_u8_u32(vdup_laneq_u32(vreinterpretq_u32_u8(src), 0));
+
+    uint8x8_t topRight = vdup_laneq_u8(src, blkSize);
+    uint8x8_t bottomLeft = vdup_laneq_u8(src, 3 * blkSize);
+
+    const uint8_t c[2][16] =
+    {
+        {3, 2, 1, 0, 3, 2, 1, 0, 1, 2, 3, 4, 1, 2, 3, 4},
+        {3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3}
+    };
+
+    const uint8x16_t c0 = vld1q_u8(c[0]);
+    const uint8x16_t c1 = vld1q_u8(c[1]);
+
+    uint16x8_t t = vmull_u8(topRight, vget_high_u8(c0));
+    t = vmlal_u8(t, above, vget_low_u8(c1));
+    t = vmlal_u8(t, bottomLeft, vget_high_u8(c1));
+
+    uint8x8_t index02 = vcreate_u8(0x0A0A0A0A08080808);
+    uint8x8_t left02 = vqtbl1_u8(src, index02);
+    uint16x8_t t02 = vmlal_u8(t, left02, vget_low_u8(c0));
+    uint8x8_t d02 = vrshrn_n_u16(t02, log2Size + 1);
+
+    uint8x8_t index13 = vcreate_u8(0x0B0B0B0B09090909);
+    uint8x8_t left13 = vqtbl1_u8(src, index13);
+    uint16x8_t t13 = vmlal_u8(t, left13, vget_low_u8(c0));
+    uint16x8_t sub_bottomLeft_above = vsubl_u8(bottomLeft, above);
+    t13 = vaddq_u16(t13, sub_bottomLeft_above);
+    uint8x8_t d13 = vrshrn_n_u16(t13, log2Size + 1);
+
+    store_u8x4_strided_xN<2>(dst + 0 * dstStride, 2 * dstStride, &d02);
+    store_u8x4_strided_xN<2>(dst + 1 * dstStride, 2 * dstStride, &d13);
+}
+#endif
+
+#if !HIGH_BIT_DEPTH
+void intra_pred_planar32_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix,
+                              int /*dirMode*/, int /*bFilter*/)
+{
+    const int log2Size = 5;
+    const int blkSize = 1 << log2Size;
+
+    const pixel *src0 = srcPix + 1;
+    const pixel *src1 = srcPix + 2 * blkSize + 1;
+
+    uint8x8_t above0 = vld1_u8(src0 + 0 * 8);
+    uint8x8_t above1 = vld1_u8(src0 + 1 * 8);
+    uint8x8_t above2 = vld1_u8(src0 + 2 * 8);
+    uint8x8_t above3 = vld1_u8(src0 + 3 * 8);
+
+    uint8x8_t topRight = vdup_n_u8(src0[blkSize]);
+    uint8x8_t bottomLeft = vdup_n_u8(src1[blkSize]);
+
+    const uint8_t c[2][32] =
+    {
+        {31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
+         15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,  0},
+        { 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16,
+         17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
+    };
+
+    // left constant
+    const uint8x8_t l0 = vld1_u8(c[0] + 0 * 8);
+    const uint8x8_t l1 = vld1_u8(c[0] + 1 * 8);
+    const uint8x8_t l2 = vld1_u8(c[0] + 2 * 8);
+    const uint8x8_t l3 = vld1_u8(c[0] + 3 * 8);
+
+    // topRight constant
+    const uint8x8_t tR0 = vld1_u8(c[1] + 0 * 8);
+    const uint8x8_t tR1 = vld1_u8(c[1] + 1 * 8);
+    const uint8x8_t tR2 = vld1_u8(c[1] + 2 * 8);
+    const uint8x8_t tR3 = vld1_u8(c[1] + 3 * 8);
+
+    const uint16x8_t offset = vdupq_n_u16(blkSize);
+    const uint16x8_t offset_bottomLeft = vaddw_u8(offset, bottomLeft);
+
+    const uint8x8_t c31 = vdup_n_u8(31);
+
+    uint16x8_t t0 = vmlal_u8(offset_bottomLeft, topRight, tR0);
+    t0 = vmlal_u8(t0, above0, c31);
+
+    uint16x8_t t1 = vmlal_u8(offset_bottomLeft, topRight, tR1);
+    t1 = vmlal_u8(t1, above1, c31);
+
+    uint16x8_t t2 = vmlal_u8(offset_bottomLeft, topRight, tR2);
+    t2 = vmlal_u8(t2, above2, c31);
+
+    uint16x8_t t3 = vmlal_u8(offset_bottomLeft, topRight, tR3);
+    t3 = vmlal_u8(t3, above3, c31);
+
+    uint16x8_t sub_bottomLeft_above0 = vsubl_u8(bottomLeft, above0);
+    uint16x8_t sub_bottomLeft_above1 = vsubl_u8(bottomLeft, above1);
+    uint16x8_t sub_bottomLeft_above2 = vsubl_u8(bottomLeft, above2);
+    uint16x8_t sub_bottomLeft_above3 = vsubl_u8(bottomLeft, above3);
+
+    for (int y = 0; y < 32; y++)
+    {
+        uint8x8_t left = vdup_n_u8(src1[y]);
+
+        uint16x8_t r0 = vmlal_u8(t0, left, l0);
+        uint16x8_t r1 = vmlal_u8(t1, left, l1);
+        uint16x8_t r2 = vmlal_u8(t2, left, l2);
+        uint16x8_t r3 = vmlal_u8(t3, left, l3);
+
+        uint8x8_t d[4];
+        d[0] = vshrn_n_u16(r0, log2Size + 1);
+        d[1] = vshrn_n_u16(r1, log2Size + 1);
+        d[2] = vshrn_n_u16(r2, log2Size + 1);
+        d[3] = vshrn_n_u16(r3, log2Size + 1);
+
+        store_u8x8xn<4>(dst + y * dstStride, 8, d);
+
+        t0 = vaddq_u16(t0, sub_bottomLeft_above0);
+        t1 = vaddq_u16(t1, sub_bottomLeft_above1);
+        t2 = vaddq_u16(t2, sub_bottomLeft_above2);
+        t3 = vaddq_u16(t3, sub_bottomLeft_above3);
+    }
+}
+#endif
 
 static void dcPredFilter(const pixel* above, const pixel* left, pixel* dst, intptr_t dststride, int size)
 {
@@ -560,15 +682,15 @@ void setupIntraPrimitives_neon(EncoderPrimitives &p)
 
     for (int i = 2; i < NUM_INTRA_MODE; i++)
     {
-        p.cu[BLOCK_8x8].intra_pred[i] = intra_pred_ang_neon<8>;
-        p.cu[BLOCK_16x16].intra_pred[i] = intra_pred_ang_neon<16>;
-        p.cu[BLOCK_32x32].intra_pred[i] = intra_pred_ang_neon<32>;
+        p.cu[BLOCK_8x8].intra_pred[i] = intra_pred_ang_neon<8, true>;
+        p.cu[BLOCK_16x16].intra_pred[i] = intra_pred_ang_neon<16, true>;
+        p.cu[BLOCK_32x32].intra_pred[i] = intra_pred_ang_neon<32, true>;
     }
-    p.cu[BLOCK_4x4].intra_pred[2] = intra_pred_ang_neon<4>;
-    p.cu[BLOCK_4x4].intra_pred[10] = intra_pred_ang_neon<4>;
-    p.cu[BLOCK_4x4].intra_pred[18] = intra_pred_ang_neon<4>;
-    p.cu[BLOCK_4x4].intra_pred[26] = intra_pred_ang_neon<4>;
-    p.cu[BLOCK_4x4].intra_pred[34] = intra_pred_ang_neon<4>;
+    p.cu[BLOCK_4x4].intra_pred[2] = intra_pred_ang_neon<4, true>;
+    p.cu[BLOCK_4x4].intra_pred[10] = intra_pred_ang_neon<4, true>;
+    p.cu[BLOCK_4x4].intra_pred[18] = intra_pred_ang_neon<4, true>;
+    p.cu[BLOCK_4x4].intra_pred[26] = intra_pred_ang_neon<4, true>;
+    p.cu[BLOCK_4x4].intra_pred[34] = intra_pred_ang_neon<4, true>;
 
     p.cu[BLOCK_4x4].intra_pred_allangs = all_angs_pred_neon<2>;
     p.cu[BLOCK_8x8].intra_pred_allangs = all_angs_pred_neon<3>;
@@ -576,8 +698,10 @@ void setupIntraPrimitives_neon(EncoderPrimitives &p)
     p.cu[BLOCK_32x32].intra_pred_allangs = all_angs_pred_neon<5>;
 
 #if !HIGH_BIT_DEPTH
+    p.cu[BLOCK_4x4].intra_pred[PLANAR_IDX] = intra_pred_planar4_neon;
     p.cu[BLOCK_8x8].intra_pred[PLANAR_IDX] = PFX(intra_pred_planar8_neon);
     p.cu[BLOCK_16x16].intra_pred[PLANAR_IDX] = PFX(intra_pred_planar16_neon);
+    p.cu[BLOCK_32x32].intra_pred[PLANAR_IDX] = intra_pred_planar32_neon;
 #endif
 
     p.cu[BLOCK_4x4].intra_pred[DC_IDX] = intra_pred_dc_neon<4>;
@@ -586,6 +710,3 @@ void setupIntraPrimitives_neon(EncoderPrimitives &p)
     p.cu[BLOCK_32x32].intra_pred[DC_IDX] = intra_pred_dc_neon<32>;
 }
 }
-
-
-

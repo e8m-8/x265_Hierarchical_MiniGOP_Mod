@@ -179,7 +179,7 @@ uint32_t weightCost(pixel *         fenc,
     if (w)
     {
         /* make a weighted copy of the reference plane */
-        int offset = w->inputOffset << (X265_DEPTH - 8);
+        int offset = w->inputOffset * (1 << (X265_DEPTH - 8));
         int weight = w->inputWeight;
         int denom = w->log2WeightDenom;
         int round = denom ? 1 << (denom - 1) : 0;
@@ -325,22 +325,10 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
                 mvs = fenc.lowresMvs[list][diffPoc];
 
                 /* test whether this motion search was performed by lookahead */
-                if (mvs[0].x != 0x7FFF)
-                {
-                    /* reference chroma planes must be extended prior to being
-                     * used as motion compensation sources */
-                    if (!refFrame->m_bChromaExtended && param.internalCsp != X265_CSP_I400 && frame.m_fencPic->m_picCsp != X265_CSP_I400)
-                    {
-                        refFrame->m_bChromaExtended = true;
-                        PicYuv *refPic = refFrame->m_fencPic;
-                        int width = refPic->m_picWidth >> cache.hshift;
-                        int height = refPic->m_picHeight >> cache.vshift;
-                        extendPicBorder(refPic->m_picOrg[1], refPic->m_strideC, width, height, refPic->m_chromaMarginX, refPic->m_chromaMarginY);
-                        extendPicBorder(refPic->m_picOrg[2], refPic->m_strideC, width, height, refPic->m_chromaMarginX, refPic->m_chromaMarginY);
-                    }
-                }
-                else
+                if (mvs[0].x == 0x7FFF)
                     mvs = 0;
+                /* chroma borders are extended unconditionally at frame-input
+                 * time in Encoder::encode(); no lazy extension needed here */
             }
 
             /* prepare inputs to weight analysis */
@@ -456,17 +444,21 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
             /* Use a smaller luma denominator if possible */
             if (!(plane || list))
             {
-                if (mindenom > 0 && !(minscale & 1))
+                if (mindenom > 0 && minscale && !(minscale & 1))
                 {
                     unsigned long idx;
-                    CTZ(idx, minscale);
+                    BSF(idx, minscale);
                     int shift = X265_MIN((int)idx, mindenom);
                     mindenom -= shift;
                     minscale >>= shift;
                 }
             }
 
-            if (!bFound || (minscale == (1 << mindenom) && minoff == 0) || (float)minscore / origscore > 0.998f)
+            int predTemp = (128 - ((128 * minscale) >> (mindenom)));
+            int deltaChromaTemp = minoff - predTemp;
+
+            if (!bFound || (minscale == (1 << mindenom) && minoff == 0) || (float)minscore / origscore > 0.998f ||
+                (plane && (deltaChromaTemp < -512 || deltaChromaTemp > 511)) )
             {
                 SET_WEIGHT(weights[plane], false, 1 << denom, denom, 0);
             }

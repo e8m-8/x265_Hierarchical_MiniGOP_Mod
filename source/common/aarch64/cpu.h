@@ -43,9 +43,9 @@ static inline bool have_feature(const char *feature)
     return feature_present;
 }
 
-static inline int aarch64_get_cpu_flags()
+static inline uint32_t aarch64_get_cpu_flags()
 {
-    int flags = 0;
+    uint32_t flags = 0;
 
 #if HAVE_NEON
     flags |= X265_CPU_NEON;
@@ -66,9 +66,9 @@ static inline int aarch64_get_cpu_flags()
 
 #include <windows.h>
 
-static inline int aarch64_get_cpu_flags()
+static inline uint32_t aarch64_get_cpu_flags()
 {
-    int flags = 0;
+    uint32_t flags = 0;
 // IsProcessorFeaturePresent() parameter documentation:
 // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-isprocessorfeaturepresent#parameters
 #if HAVE_NEON
@@ -116,27 +116,36 @@ static inline int aarch64_get_cpu_flags()
     }
 #endif  // defined(PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE)
 #endif  // HAVE_SVE2
+#if HAVE_SVE2_BITPERM
+#if defined(PF_ARM_SVE_BITPERM_INSTRUCTIONS_AVAILABLE)
+    if (IsProcessorFeaturePresent(PF_ARM_SVE_BITPERM_INSTRUCTIONS_AVAILABLE))
+    {
+        flags |= X265_CPU_SVE2_BITPERM;
+    }
+#endif  // defined(PF_ARM_SVE_BITPERM_INSTRUCTIONS_AVAILABLE)
+#endif  // HAVE_SVE2_BITPERM
     return flags;
 }
 
-#elif defined(__linux__)
+#elif HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO
 
 #include <sys/auxv.h>
 
 #define X265_AARCH64_HWCAP_ASIMDDP (1 << 20)
 #define X265_AARCH64_HWCAP_SVE (1 << 22)
 #define X265_AARCH64_HWCAP2_SVE2 (1 << 1)
+#define X265_AARCH64_HWCAP2_SVEBITPERM (1 << 4)
 #define X265_AARCH64_HWCAP2_I8MM (1 << 13)
 
-static inline int aarch64_get_cpu_flags()
+static inline uint32_t aarch64_get_cpu_flags()
 {
-    int flags = 0;
+    uint32_t flags = 0;
 
 #if HAVE_NEON_DOTPROD || HAVE_SVE
-    unsigned long hwcap = getauxval(AT_HWCAP);
+    unsigned long hwcap = x265_getauxval(AT_HWCAP);
 #endif
-#if HAVE_NEON_I8MM || HAVE_SVE2
-    unsigned long hwcap2 = getauxval(AT_HWCAP2);
+#if HAVE_NEON_I8MM || HAVE_SVE2 || HAVE_SVE2_BITPERM
+    unsigned long hwcap2 = x265_getauxval(AT_HWCAP2);
 #endif
 
 #if HAVE_NEON
@@ -154,6 +163,9 @@ static inline int aarch64_get_cpu_flags()
 #if HAVE_SVE2
     if (hwcap2 & X265_AARCH64_HWCAP2_SVE2) flags |= X265_CPU_SVE2;
 #endif
+#if HAVE_SVE2_BITPERM
+    if (hwcap2 & X265_AARCH64_HWCAP2_SVEBITPERM) flags |= X265_CPU_SVE2_BITPERM;
+#endif
 
     return flags;
 }
@@ -165,9 +177,9 @@ static inline int aarch64_get_cpu_flags()
     "-DAARCH64_RUNTIME_CPU_DETECT=OFF."
 #endif // defined(__APPLE__)
 
-static inline int aarch64_cpu_detect()
+static inline uint32_t aarch64_cpu_detect()
 {
-    int flags = aarch64_get_cpu_flags();
+    uint32_t flags = aarch64_get_cpu_flags();
 
     // Restrict flags: FEAT_I8MM assumes that FEAT_DotProd is available.
     if (!(flags & X265_CPU_NEON_DOTPROD)) flags &= ~X265_CPU_NEON_I8MM;
@@ -179,14 +191,17 @@ static inline int aarch64_cpu_detect()
     // Restrict flags: SVE2 assumes that FEAT_SVE is available.
     if (!(flags & X265_CPU_SVE)) flags &= ~X265_CPU_SVE2;
 
+    // Restrict flags: SVE2_BitPerm assumes that FEAT_SVE2 is available.
+    if (!(flags & X265_CPU_SVE2)) flags &= ~X265_CPU_SVE2_BITPERM;
+
     return flags;
 }
 
 #else // if AARCH64_RUNTIME_CPU_DETECT
 
-static inline int aarch64_cpu_detect()
+static inline uint32_t aarch64_cpu_detect()
 {
-    int flags = 0;
+    uint32_t flags = 0;
 
 #if HAVE_NEON
     flags |= X265_CPU_NEON;
@@ -202,6 +217,9 @@ static inline int aarch64_cpu_detect()
 #endif
 #if HAVE_SVE2
     flags |= X265_CPU_SVE2;
+#endif
+#if HAVE_SVE2_BITPERM
+    flags |= X265_CPU_SVE2_BITPERM;
 #endif
     return flags;
 }

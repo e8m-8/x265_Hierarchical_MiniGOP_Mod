@@ -31,6 +31,7 @@
 #include "mbdstharness.h"
 #include "ipfilterharness.h"
 #include "intrapredharness.h"
+#include "mcstfharness.h"
 #include "param.h"
 #include "cpu.h"
 
@@ -80,13 +81,59 @@ const char* const* chromaPartStr[X265_CSP_COUNT] =
     lumaPartStr
 };
 
+struct test_arch_t
+{
+    char name[13];
+    int flag;
+} testArch[] =
+{
+#if X265_ARCH_X86
+    { "SSE2", X265_CPU_SSE2 },
+    { "SSE3", X265_CPU_SSE3 },
+    { "SSSE3", X265_CPU_SSSE3 },
+    { "SSE4", X265_CPU_SSE4 },
+    { "AVX", X265_CPU_AVX },
+    { "XOP", X265_CPU_XOP },
+    { "AVX2", X265_CPU_AVX2 },
+    { "BMI2", X265_CPU_AVX2 | X265_CPU_BMI1 | X265_CPU_BMI2 },
+    { "AVX512", X265_CPU_AVX512 },
+#elif X265_ARCH_ARM64 || X265_ARCH_ARM
+    { "ARMv6", X265_CPU_ARMV6 },
+    { "NEON", X265_CPU_NEON },
+    { "Neon_DotProd", X265_CPU_NEON_DOTPROD },
+    { "Neon_I8MM", X265_CPU_NEON_I8MM },
+    { "SVE", X265_CPU_SVE },
+    { "SVE2", X265_CPU_SVE2 },
+    { "SVE2_BitPerm", X265_CPU_SVE2_BITPERM },
+    { "FastNeonMRC", X265_CPU_FAST_NEON_MRC },
+#elif X265_ARCH_RISCV64
+    { "RVV", X265_CPU_RVV},
+    { "Zbb", X265_CPU_RVV | X265_CPU_ZBB},
+#elif X265_ARCH_LOONGARCH64
+    { "LSX", X265_CPU_LSX },
+    { "LASX", X265_CPU_LASX },
+#endif
+    { "", 0 },
+};
+
+void do_cpuid_list(int cpuid)
+{
+    printf("x265 detected --cpuid architectures:\n");
+    for (int i = 0; testArch[i].flag; i++)
+    {
+        if ((testArch[i].flag & cpuid) == testArch[i].flag)
+            printf("       %s\n", testArch[i].name);
+    }
+}
+
 void do_help()
 {
     printf("x265 optimized primitive testbench\n\n");
     printf("usage: TestBench [--cpuid CPU] [--testbench BENCH] [--nobench] [--help]\n\n");
-    printf("       CPU is comma separated SIMD arch list, example: SSE4,AVX\n");
-    printf("       BENCH is one of (pixel,transforms,interp,intrapred)\n\n");
-    printf("       --nobench disables running benchmarks, only run correctness tests\n\n");
+    printf("       CPU is comma separated SIMD architecture list, for example: SSE4,AVX\n");
+    printf("       Use `--cpuid list` to print a list of detected SIMD architectures\n\n");
+    printf("       BENCH is one of (pixel,transforms,interp,intrapred,mcstf)\n\n");
+    printf("       `--nobench` disables running benchmarks, only run correctness tests\n\n");
     printf("By default, the test bench will test all benches on detected CPU architectures\n");
     printf("Options and testbench name may be truncated.\n");
 }
@@ -95,6 +142,7 @@ PixelHarness  HPixel;
 MBDstHarness  HMBDist;
 IPFilterHarness HIPFilter;
 IntraPredHarness HIPred;
+MCSTFHarness  HMCSTF;
 
 int main(int argc, char *argv[])
 {
@@ -120,6 +168,11 @@ int main(int argc, char *argv[])
         }
         else if (!strncmp(name, "cpuid", strlen(name)))
         {
+            if (!strncmp(value, "list", 5))
+            {
+                do_cpuid_list(cpuid);
+                return 0;
+            }
             int cpu_detect_cpuid = cpuid;
             bool bError = false;
             cpuid = parseCpuName(value, bError, enableavx512);
@@ -173,49 +226,24 @@ int main(int argc, char *argv[])
     setupCPrimitives(cprim);
     setupAliasPrimitives(cprim);
 
-    struct test_arch_t
+    for (int i = 0; testArch[i].flag; i++)
     {
-        char name[13];
-        int flag;
-    } test_arch[] =
-    {
-#if X265_ARCH_X86
-        { "SSE2", X265_CPU_SSE2 },
-        { "SSE3", X265_CPU_SSE3 },
-        { "SSSE3", X265_CPU_SSSE3 },
-        { "SSE4", X265_CPU_SSE4 },
-        { "AVX", X265_CPU_AVX },
-        { "XOP", X265_CPU_XOP },
-        { "AVX2", X265_CPU_AVX2 },
-        { "BMI2", X265_CPU_AVX2 | X265_CPU_BMI1 | X265_CPU_BMI2 },
-        { "AVX512", X265_CPU_AVX512 },
-#else
-        { "ARMv6", X265_CPU_ARMV6 },
-        { "NEON", X265_CPU_NEON },
-        { "SVE2", X265_CPU_SVE2 },
-        { "SVE", X265_CPU_SVE },
-        { "Neon_DotProd", X265_CPU_NEON_DOTPROD },
-        { "Neon_I8MM", X265_CPU_NEON_I8MM },
-        { "FastNeonMRC", X265_CPU_FAST_NEON_MRC },
-#endif
-        { "", 0 },
-    };
-
-    for (int i = 0; test_arch[i].flag; i++)
-    {
-        if ((test_arch[i].flag & cpuid) == test_arch[i].flag)
-        {
-            printf("Testing primitives: %s\n", test_arch[i].name);
-            fflush(stdout);
-        }
-        else
+        if ((testArch[i].flag & cpuid) != testArch[i].flag)
             continue;
 
-#if defined(X265_ARCH_X86) || defined(X265_ARCH_ARM64)
+        printf("Testing primitives: %s\n", testArch[i].name);
+        fflush(stdout);
+
+#if defined(X265_ARCH_X86) || defined(X265_ARCH_ARM64) || defined(X265_ARCH_RISCV64)
         EncoderPrimitives vecprim;
         memset(&vecprim, 0, sizeof(vecprim));
-        setupIntrinsicPrimitives(vecprim, test_arch[i].flag);
+        setupIntrinsicPrimitives(vecprim, testArch[i].flag);
         setupAliasPrimitives(vecprim);
+        /* At HIGH_BIT_DEPTH the aliased primitives (sse_pp, copy_ps/sp/ss, ...)
+         * are trampolines that dispatch through the global primitive table, so
+         * it must point at the primitives currently under test before the
+         * harnesses run - otherwise the aliases jump through NULL slots. */
+        memcpy(&primitives, &vecprim, sizeof(EncoderPrimitives));
         for (size_t h = 0; h < sizeof(harness) / sizeof(TestHarness*); h++)
         {
             if (testname && strncmp(testname, harness[h]->getName(), strlen(testname)))
@@ -232,7 +260,7 @@ int main(int argc, char *argv[])
         EncoderPrimitives asmprim;
         memset(&asmprim, 0, sizeof(asmprim));
 
-        setupAssemblyPrimitives(asmprim, test_arch[i].flag);
+        setupAssemblyPrimitives(asmprim, testArch[i].flag);
         setupAliasPrimitives(asmprim);
         memcpy(&primitives, &asmprim, sizeof(EncoderPrimitives));
         for (size_t h = 0; h < sizeof(harness) / sizeof(TestHarness*); h++)
@@ -248,12 +276,36 @@ int main(int argc, char *argv[])
         }
     }
 
+#if X265_ARCH_X86
+    /* MCSTFPrimitives is a standalone table with a single SIMD tier (AVX2), so
+     * it is tested once against the effective (possibly --cpuid restricted)
+     * cpuid rather than through the per-arch EncoderPrimitives loop above. */
+    if (!testname || !strncmp(testname, HMCSTF.getName(), strlen(testname)))
+    {
+        MCSTFPrimitives mcstfCRef;
+        memset(&mcstfCRef, 0, sizeof(mcstfCRef));
+        setupMCSTFPrimitives_scalar(mcstfCRef);
+
+        MCSTFPrimitives mcstfOpt;
+        memset(&mcstfOpt, 0, sizeof(mcstfOpt));
+        if (cpuid & X265_CPU_AVX2)
+            setupIntrinsicMCSTF_avx2(mcstfOpt);
+
+        if (!HMCSTF.testCorrectness(mcstfCRef, mcstfOpt))
+        {
+            fflush(stdout);
+            fprintf(stderr, "\nx265: mcstf primitive has failed. Go and fix that Right Now!\n");
+            return -1;
+        }
+    }
+#endif
+
     /******************* Cycle count for all primitives **********************/
     if (run_benchmarks)
     {
         EncoderPrimitives optprim;
         memset(&optprim, 0, sizeof(optprim));
-#if defined(X265_ARCH_X86) || defined(X265_ARCH_ARM64)
+#if defined(X265_ARCH_X86) || defined(X265_ARCH_ARM64) || defined(X265_ARCH_RISCV64)
         setupIntrinsicPrimitives(optprim, cpuid);
 #endif
 
@@ -277,6 +329,23 @@ int main(int argc, char *argv[])
             printf("== %s primitives ==\n", harness[h]->getName());
             harness[h]->measureSpeed(cprim, optprim);
         }
+
+#if X265_ARCH_X86
+        if (!testname || !strncmp(testname, HMCSTF.getName(), strlen(testname)))
+        {
+            MCSTFPrimitives mcstfCRef;
+            memset(&mcstfCRef, 0, sizeof(mcstfCRef));
+            setupMCSTFPrimitives_scalar(mcstfCRef);
+
+            MCSTFPrimitives mcstfOpt;
+            memset(&mcstfOpt, 0, sizeof(mcstfOpt));
+            if (cpuid & X265_CPU_AVX2)
+                setupIntrinsicMCSTF_avx2(mcstfOpt);
+
+            printf("== %s primitives ==\n", HMCSTF.getName());
+            HMCSTF.measureSpeed(mcstfCRef, mcstfOpt);
+        }
+#endif
 
         printf("\n");
     }

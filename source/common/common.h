@@ -39,6 +39,7 @@
 #include <stdint.h>
 #include <memory.h>
 #include <assert.h>
+#include <stdlib.h>
 
 #include "x265.h"
 
@@ -71,6 +72,7 @@
 #define NUM_INTRA_MODE 35
 
 #if defined(__GNUC__)
+#define X265_ASSUME_NO_ALIAS __restrict__
 #define ALIGN_VAR_4(T, var)  T var __attribute__((aligned(4)))
 #define ALIGN_VAR_8(T, var)  T var __attribute__((aligned(8)))
 #define ALIGN_VAR_16(T, var) T var __attribute__((aligned(16)))
@@ -82,6 +84,7 @@
 #endif
 #elif defined(_MSC_VER)
 
+#define X265_ASSUME_NO_ALIAS
 #define ALIGN_VAR_4(T, var)  __declspec(align(4)) T var
 #define ALIGN_VAR_8(T, var)  __declspec(align(8)) T var
 #define ALIGN_VAR_16(T, var) __declspec(align(16)) T var
@@ -89,6 +92,8 @@
 #define ALIGN_VAR_64(T, var) __declspec(align(64)) T var
 #define fseeko _fseeki64
 #define ftello _ftelli64
+#else
+#define X265_ASSUME_NO_ALIAS
 #endif // if defined(__GNUC__)
 #if HAVE_INT_TYPES_H
 #define __STDC_FORMAT_MACROS
@@ -150,6 +155,7 @@ typedef uint64_t sse_t;
 #endif
 
 #define MAX_UINT        0xFFFFFFFFU // max. value of unsigned 32-bit integer
+#define MAX_UINT64      0xFFFFFFFFFFFFFFFFULL // max. value of unsigned 64-bit integer
 #define MAX_INT         2147483647  // max. value of signed 32-bit integer
 #define MAX_INT64       0x7FFFFFFFFFFFFFFFLL  // max. value of signed 64-bit integer
 #define MAX_DOUBLE      1.7e+308    // max. value of double-type value
@@ -223,7 +229,7 @@ typedef int16_t  coeff_t;      // transform coefficient
 #define X265_LOWRES_CU_SIZE   8
 #define X265_LOWRES_CU_BITS   3
 
-#define X265_MALLOC(type, count)    (type*)x265_malloc(sizeof(type) * (count))
+#define X265_MALLOC(type, count)    static_cast<type*>(x265_malloc(sizeof(type) * (count)))
 #define X265_FREE(ptr)              x265_free(ptr)
 #define X265_FREE_ZERO(ptr)         { x265_free(ptr); (ptr) = NULL; }
 #define CHECKED_MALLOC(var, type, count) \
@@ -231,7 +237,7 @@ typedef int16_t  coeff_t;      // transform coefficient
         var = (type*)x265_malloc(sizeof(type) * (count)); \
         if (!var) \
         { \
-            x265_log(NULL, X265_LOG_ERROR, "malloc of size %d failed\n", sizeof(type) * (count)); \
+            x265_log(NULL, X265_LOG_ERROR, "malloc of size %llu failed\n", sizeof(type) * (count)); \
             goto fail; \
         } \
     }
@@ -242,7 +248,7 @@ typedef int16_t  coeff_t;      // transform coefficient
             memset((void*)var, 0, sizeof(type) * (count)); \
         else \
         { \
-            x265_log(NULL, X265_LOG_ERROR, "malloc of size %d failed\n", sizeof(type) * (count)); \
+            x265_log(NULL, X265_LOG_ERROR, "malloc of size %llu failed\n", sizeof(type) * (count)); \
             goto fail; \
         } \
     }
@@ -349,6 +355,10 @@ typedef int16_t  coeff_t;      // transform coefficient
 #define X265_BYTE 8
 
 #define MAX_MCSTF_TEMPORAL_WINDOW_LENGTH 8
+
+#define MAX_NUM_PUS_PER_CTU      593   // Maximum number of PUs in a 64x64 CTU
+#define MAX_NUM_PU_SIZES         24    // Number of distinct PU sizes in a 64x64 CTU
+#define MIN_TME_THREADS          32    // Recommended number of threads for ThreadedME
 
 namespace X265_NS {
 

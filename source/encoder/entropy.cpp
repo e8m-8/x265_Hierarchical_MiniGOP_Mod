@@ -853,15 +853,14 @@ void Entropy::codeVUI(const VUI& vui, int maxSubTLayers, bool bEmitVUITimingInfo
             WRITE_CODE(vui.timingInfo.numUnitsInTick, 32, "vui_num_units_in_tick");
             WRITE_CODE(vui.timingInfo.timeScale, 32, "vui_time_scale");
             WRITE_FLAG(0, "vui_poc_proportional_to_timing_flag");
-        }
-
-        if (!bEmitVUIHRDInfo)
-            WRITE_FLAG(0, "vui_hrd_parameters_present_flag");
-        else
-        {
-            WRITE_FLAG(vui.hrdParametersPresentFlag, "vui_hrd_parameters_present_flag");
-            if (vui.hrdParametersPresentFlag)
-                codeHrdParameters(vui.hrdParameters, maxSubTLayers);
+            if (!bEmitVUIHRDInfo)
+                WRITE_FLAG(0, "vui_hrd_parameters_present_flag");
+            else
+            {
+                WRITE_FLAG(vui.hrdParametersPresentFlag, "vui_hrd_parameters_present_flag");
+                if (vui.hrdParametersPresentFlag)
+                    codeHrdParameters(vui.hrdParameters, maxSubTLayers);
+            }
         }
     }
 
@@ -1378,17 +1377,17 @@ void Entropy::encodeTransform(const CUData& cu, uint32_t absPartIdx, uint32_t cu
     }
 
     uint32_t absPartIdxC = bSmallChroma ? absPartIdx & 0xFC : absPartIdx;
+    uint32_t cbfY = cu.getCbf(absPartIdx, TEXT_LUMA, curDepth);
+    uint32_t cbfU = cu.getCbf(absPartIdxC, TEXT_CHROMA_U, curDepth);
+    uint32_t cbfV = cu.getCbf(absPartIdxC, TEXT_CHROMA_V, curDepth);
 
-    if (cu.isInter(absPartIdxC) && !curDepth && !cu.getCbf(absPartIdxC, TEXT_CHROMA_U, 0) && !cu.getCbf(absPartIdxC, TEXT_CHROMA_V, 0))
+    if (cu.isInter(absPartIdxC) && !curDepth && !cbfU && !cbfV)
     {
         X265_CHECK(cu.getCbf(absPartIdxC, TEXT_LUMA, 0), "CBF should have been set\n");
     }
     else
-        codeQtCbfLuma(cu.getCbf(absPartIdx, TEXT_LUMA, curDepth), curDepth);
+        codeQtCbfLuma(cbfY, curDepth);
 
-    uint32_t cbfY = cu.getCbf(absPartIdx, TEXT_LUMA, curDepth);
-    uint32_t cbfU = cu.getCbf(absPartIdxC, TEXT_CHROMA_U, curDepth);
-    uint32_t cbfV = cu.getCbf(absPartIdxC, TEXT_CHROMA_V, curDepth);
     if (!(cbfY || cbfU || cbfV))
         return;
 
@@ -1602,9 +1601,10 @@ void Entropy::codeCoeff(const CUData& cu, uint32_t absPartIdx, bool& bCodeDQP, c
 {
     if (!cu.isIntra(absPartIdx))
     {
+        bool rootCbf = cu.getQtRootCbf(absPartIdx);
         if (!(cu.m_mergeFlag[absPartIdx] && cu.m_partSize[absPartIdx] == SIZE_2Nx2N))
-            codeQtRootCbf(cu.getQtRootCbf(absPartIdx));
-        if (!cu.getQtRootCbf(absPartIdx))
+            codeQtRootCbf(rootCbf);
+        if (!rootCbf)
             return;
     }
 
@@ -1782,7 +1782,7 @@ void Entropy::codePredWeightTable(const Slice& slice)
                 else
 #endif
                     WRITE_FLAG(!!wp[0].wtPresent, "luma_weight_lX_flag");
-                totalSignalledWeightFlags += wp[0].wtPresent;
+                totalSignalledWeightFlags = totalSignalledWeightFlags + wp[0].wtPresent;
             }
 
             if (bChroma)
@@ -1796,7 +1796,7 @@ void Entropy::codePredWeightTable(const Slice& slice)
                     else
 #endif
                         WRITE_FLAG(!!wp[1].wtPresent, "chroma_weight_lX_flag");
-                    totalSignalledWeightFlags += 2 * wp[1].wtPresent;
+                    totalSignalledWeightFlags = totalSignalledWeightFlags + 2 * wp[1].wtPresent;
                 }
             }
 
@@ -1893,7 +1893,7 @@ void Entropy::writeCoefRemainExGolomb(uint32_t codeNumber, uint32_t absGoRice)
         codeNumber = (codeNumber >> absGoRice) - COEF_REMAIN_BIN_REDUCTION;
         {
             unsigned long idx;
-            CLZ(idx, codeNumber + 1);
+            BSR(idx, codeNumber + 1);
             length = idx;
             X265_CHECK((codeNumber != 0) || (length == 0), "length check failure\n");
             codeNumber -= (1 << idx) - 1;
@@ -2104,8 +2104,14 @@ void Entropy::codeRefFrmIdx(const CUData& cu, uint32_t absPartIdx, int list)
 void Entropy::codeMvd(const CUData& cu, uint32_t absPartIdx, int list)
 {
     const MV& mvd = cu.m_mvd[list][absPartIdx];
-    const int hor = mvd.x;
-    const int ver = mvd.y;
+
+    /* Cast to ensure the mvdLX is in the range of [-2^15, 2^15-1] as specified in
+    H.265 7.4.9.9 Motion vector difference semantics.
+    This casting will cause overflow and underflow, should the mvd exceeds the int16_t range.
+    But because of the decoding process Equation 8-94 to 8-97, and the MV itself having the range of [-2^15, 2^15-1],
+    the decoded MV will still be correct, and mvdLX will be in the legal range. */
+    const int16_t hor = static_cast<int16_t>(mvd.x);
+    const int16_t ver = static_cast<int16_t>(mvd.y);
 
     encodeBin(hor != 0 ? 1 : 0, m_contextState[OFF_MV_RES_CTX]);
     encodeBin(ver != 0 ? 1 : 0, m_contextState[OFF_MV_RES_CTX]);
@@ -2206,7 +2212,7 @@ uint32_t costCoeffRemain_c0(uint16_t *absCoeff, int numNonZero)
             {
                 {
                     unsigned long cidx;
-                    CLZ(cidx, codeNumber + 1);
+                    BSR(cidx, codeNumber + 1);
                     length = cidx;
                 }
                 X265_CHECK((codeNumber != 0) || (length == 0), "length check failure\n");
@@ -2319,8 +2325,8 @@ void Entropy::codeCoeffNxN(const CUData& cu, const coeff_t* coeff, uint32_t absP
     int scanPosSigOff = scanPosLast - (lastScanSet << MLS_CG_SIZE) - 1;
     ALIGN_VAR_32(uint16_t, absCoeff[(1 << MLS_CG_SIZE) + 1]);   // extra 2 bytes(+1) space for AVX2 assembly, +1 because (numNonZero<=1) in costCoeffNxN path
     uint32_t numNonZero = 1;
-    unsigned long lastNZPosInCG;
-    unsigned long firstNZPosInCG;
+    unsigned long lastNZPosInCG = 0;
+    unsigned long firstNZPosInCG = 0;
 
 #if _DEBUG
     // Unnecessary, for Valgrind-3.10.0 only
@@ -2410,6 +2416,7 @@ void Entropy::codeCoeffNxN(const CUData& cu, const coeff_t* coeff, uint32_t absP
             if (m_bitIf)
             {
                 ALIGN_VAR_32(uint16_t, tmpCoeff[SCAN_SET_SIZE]);
+                memset(tmpCoeff, 0, sizeof(tmpCoeff));
 
                 // TODO: accelerate by PABSW
                 for (int i = 0; i < MLS_CG_SIZE; i++)
@@ -2488,10 +2495,10 @@ void Entropy::codeCoeffNxN(const CUData& cu, const coeff_t* coeff, uint32_t absP
         numNonZero = coeffNum[subSet];
         if (numNonZero > 0)
         {
-            uint32_t idx;
+            uint32_t idx = 0;
             X265_CHECK(subCoeffFlag > 0, "subCoeffFlag is zero\n");
-            CLZ(lastNZPosInCG, subCoeffFlag);
-            CTZ(firstNZPosInCG, subCoeffFlag);
+            BSR(lastNZPosInCG, subCoeffFlag);
+            BSF(firstNZPosInCG, subCoeffFlag);
 
             bool signHidden = (lastNZPosInCG - firstNZPosInCG >= SBH_THRESHOLD);
             const uint8_t ctxSet = (((subSet > 0) + bIsLuma) & 2) + !(c1 & 3);
@@ -2887,7 +2894,7 @@ void Entropy::encodeBin(uint32_t binValue, uint8_t &ctxModel)
         // NOTE: lps is non-zero and the maximum of idx is 8 because lps less than 256
         //numBits = g_renormTable[lps >> 3];
         unsigned long idx;
-        CLZ(idx, lps);
+        BSR(idx, lps);
         X265_CHECK(state != 63 || idx == 1, "state failure\n");
 
         numBits = 8 - idx;

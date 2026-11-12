@@ -56,11 +56,7 @@ void Bitstream::write(uint32_t val, uint32_t numBits)
     {
         /* topword aligns m_partialByte with the msb of val */
         uint32_t topword = (numBits - nextPartialBits) & ~7;
-#if USING_FTRAPV
-        uint32_t write_bits = (topword < 32 ? m_partialByte << topword : 0) | (val >> nextPartialBits);
-#else
-        uint32_t write_bits = (m_partialByte << topword) | (val >> nextPartialBits);
-#endif
+        uint32_t write_bits = (topword < 32 ? (uint32_t)m_partialByte << topword : 0) | (val >> nextPartialBits);
 
         switch (writeBytes)
         {
@@ -118,7 +114,7 @@ void SyntaxElementWriter::writeUvlc(uint32_t code)
     X265_CHECK(code, "writing -1 code, will cause infinite loop\n");
 
     unsigned long idx;
-    CLZ(idx, code);
+    BSR(idx, code);
     uint32_t length = (uint32_t)idx * 2 + 1;
 
     // Take care of cases where length > 32

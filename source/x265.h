@@ -25,6 +25,7 @@
 #ifndef X265_H
 #define X265_H
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include "x265_config.h"
@@ -32,7 +33,7 @@
 extern "C" {
 #endif
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #pragma warning(disable: 4201) // non-standard extension used (nameless struct/union)
 #endif
 
@@ -183,7 +184,7 @@ typedef struct x265_weight_param
     int      wtPresent;
 }x265_weight_param;
 
-#if X265_DEPTH < 10
+#if defined(X265_DEPTH) && X265_DEPTH < 10
 typedef uint32_t sse_t;
 #else
 typedef uint64_t sse_t;
@@ -276,6 +277,8 @@ typedef struct x265_frame_stats
     double           decideWaitTime;
     double           row0WaitTime;
     double           wallTime;
+    int64_t          tmeTime;
+    int64_t          tmeWaitTime;
     double           refWaitWallTime;
     double           totalCTUTime;
     double           stallTime;
@@ -318,6 +321,8 @@ typedef struct x265_frame_stats
     int64_t          currTrBitrate;
     double           currTrCRF;
     int              currTrQP;
+    int32_t          frameNoise;       /* noise score at GOP start (selective-mcstf); -1 for non-GOP-start frames */
+    int              isMCSTFEnabled;   /* 1 if MCSTF bilateral filter will be applied to this frame */
 } x265_frame_stats;
 
 typedef struct x265_ctu_info_t
@@ -493,6 +498,8 @@ typedef struct x265_picture
     //Dolby Vision RPU metadata
     x265_dolby_vision_rpu rpu;
 
+    /* Field number when bField and interlaceMode are set: 1 for the first field
+     * of a frame, 2 for the second */
     int fieldNum;
 
     //SEI picture structure message
@@ -555,9 +562,18 @@ typedef enum
 #define X265_CPU_NEON            (1 << 1)   /* ARM NEON */
 #define X265_CPU_FAST_NEON_MRC   (1 << 2)   /* Transfer from NEON to ARM register is fast (Cortex-A9) */
 #define X265_CPU_SVE2            (1 << 3)   /* AArch64 SVE2 */
-#define X265_CPU_SVE             (1 << 4)   /* AArch64 SVE2 */
+#define X265_CPU_SVE             (1 << 4)   /* AArch64 SVE */
 #define X265_CPU_NEON_DOTPROD    (1 << 5)   /* AArch64 Neon DotProd */
 #define X265_CPU_NEON_I8MM       (1 << 6)   /* AArch64 Neon I8MM */
+#define X265_CPU_SVE2_BITPERM    (1 << 7)   /* AArch64 SVE2 BitPerm */
+
+/* RISCV */
+#define X265_CPU_RVV             (1 << 0)   /* RISCV vector */
+#define X265_CPU_ZBB             (1 << 1)   /* RISCV zbb */
+
+/* LOONGARCH */
+#define X265_CPU_LSX             0x0000001
+#define X265_CPU_LASX            0x0000002
 
 /* IBM Power8 */
 #define X265_CPU_ALTIVEC         0x0000001
@@ -642,6 +658,7 @@ typedef enum
 #define X265_MAX_GOP_LENGTH 16
 #define X265_FAST_GOP_LENGTH 9
 #define MAX_T_LAYERS 7
+#define NOISE_THRESHOLD         40000
 
 #if ENABLE_MULTIVIEW
 #define MAX_VIEWS 2
@@ -749,7 +766,7 @@ static const char * const x265_transfer_names[] = { "reserved", "bt709", "unknow
                                                     "log316", "iec61966-2-4", "bt1361e", "iec61966-2-1", "bt2020-10", "bt2020-12",
                                                     "smpte2084", "smpte428", "arib-std-b67", 0 };
 static const char * const x265_colmatrix_names[] = { "gbr", "bt709", "unknown", "", "fcc", "bt470bg", "smpte170m", "smpte240m",
-                                                     "ycgco", "bt2020nc", "bt2020c", "smpte2085", "chroma-derived-nc", "chroma-derived-c", "ictcp", 0 };
+                                                     "ycgco", "bt2020nc", "bt2020c", "smpte2085", "chroma-derived-nc", "chroma-derived-c", "ictcp", "ipt-pq-c2", 0 };
 static const char * const x265_sar_names[] = { "unknown", "1:1", "12:11", "10:11", "16:11", "40:33", "24:11", "20:11",
                                                "32:11", "80:33", "18:11", "15:11", "64:33", "160:99", "4:3", "3:2", "2:1", 0 };
 static const char * const x265_interlace_names[] = { "prog", "tff", "bff", 0 };
@@ -986,6 +1003,15 @@ typedef struct x265_param
      * motion searches there will be to distribute. This option is often not a
      * win, particularly in video sequences with low motion. Default disabled */
     int       bDistributeMotionEstimation;
+
+    /* Use a dedicated threadpool to pre-process motion estimation. Evaluates all
+     * PU combinations for CTUs in parallel. Dependencies between CTUs in inter
+     * frames is broken to allow for more parallelism, and as result may cause
+     * drop in compression efficiency. Recommended for many core CPUs and when
+     * loss in compression efficiency is acceptable for speedup of encoding.
+     * Default disabled.
+     */
+    int       bThreadedME;
 
     /*== Logging Features ==*/
 
@@ -2001,7 +2027,11 @@ typedef struct x265_param
        Re-init RC history at that point in ABR mode. Default is disabled. */
     int       bEnableFades;
 
-    /* Enable field coding */
+    /* Enable field coding of interlaced input. With the x265 CLI, each input
+     * picture is an interlaced frame that the CLI splits into its two fields.
+     * Applications using the library must pass fields and set fieldNum in each
+     * x265_picture; pic_struct is then derived from fieldNum instead of the
+     * POC. Requires interlaceMode. Default disabled */
     int bField;
 
     /*Emit content light level info SEI*/
@@ -2152,15 +2182,23 @@ typedef struct x265_param
 
     /*Motion compensated temporal filter*/
     int      bEnableTemporalFilter;
-    double   temporalFilterStrength;
-    /*Search Range for L0, L1 and L2 in MCTF*/
-    int      searchRangeForLayer0;
-    int      searchRangeForLayer1;
-    int      searchRangeForLayer2;
+    int      mcstfFrameRange;
+    /* When enabled, estimate noise at each GOP boundary and skip MCSTF for clean GOPs */
+    int      bSelectiveMCSTF;
+
+    /* Threaded ME */
+    /* Number of CTUs processed at once when a worker thread picks up a task from ThreadedME. */
+    int      tmeTaskBlockSize;
+    
+    /* Number of rows upto which ThreadedME processes tasks ahead of WPP */
+    int      tmeNumBufferRows;
+
+    /* Number of worker threads assigned to the ThreadedME thread pools.
+     * Not configurable by the user. */
+    int      tmeNumThreads;
 
     /*SBRC*/
     int      bEnableSBRC;
-    int mcstfFrameRange;
 
     /*Alpha channel encoding*/
     int      bEnableAlpha;
@@ -2178,6 +2216,33 @@ typedef struct x265_param
     /*Frame level RateControl Configuration*/
     int     bConfigRCFrame;
     int    isAbrLadderEnable;
+
+    /*tune*/
+    const char* tune;
+
+    /* === FOVEATED ENCODING PARAMETERS (added for gaze-contingent QP mapping) ===
+     * All zero/NULL = disabled; encoder behavior is bit-for-bit identical to
+     * upstream x265 when foveaDelta == 0 or foveaGazeFile == NULL with no gaze set. */
+
+    /* Gaze fixation point in pixel coordinates. (0,0) = top-left.
+     * Ignored when foveaDelta == 0. */
+    float    foveaGazeX;
+
+    /* Gaze fixation point Y in pixel coordinates. */
+    float    foveaGazeY;
+
+    /* Maximum QP offset applied at the periphery (positive = lower quality).
+     * 0 = foveated encoding disabled. Recommended range: 5..40. */
+    float    foveaDelta;
+
+    /* Gaussian sigma in pixels defining the foveal quality falloff radius.
+     * 0 = use default (95px = 2.5 degrees visual angle at 60cm / 24-inch monitor). */
+    float    foveaSigma;
+
+    /* Path to a per-frame gaze file (one line per frame: "frame_num x y").
+     * When set, overrides foveaGazeX/foveaGazeY with per-frame values.
+     * NULL = use static gaze from foveaGazeX/foveaGazeY. */
+    char* foveaGazeFile;
 
     /* Enabled Generalized P/B (GPB) B-slices*/
     int    bEnableGPB;
@@ -2452,7 +2517,7 @@ void x265_csvlog_encode(const x265_param*, const x265_stats *, int padx, int pad
 /* In-place downshift from a bit-depth greater than 8 to a bit-depth of 8, using
  * the residual bits to dither each row. */
 void x265_dither_image(x265_picture *, int picWidth, int picHeight, int16_t *errorBuf, int bitDepth);
-#if ENABLE_LIBVMAF
+#if defined(ENABLE_LIBVMAF) && ENABLE_LIBVMAF
 /* x265_calculate_vmafScore:
  *    returns VMAF score for the input video.
  *    This api must be called only after encoding was done. */
@@ -2524,7 +2589,7 @@ typedef struct x265_api
     void          (*csvlog_encode)(const x265_param*, const x265_stats *, int, int, int, char**);
     void          (*dither_image)(x265_picture*, int, int, int16_t*, int);
     int           (*set_analysis_data)(x265_encoder *encoder, x265_analysis_data *analysis_data, int poc, uint32_t cuBytes);
-#if ENABLE_LIBVMAF
+#if defined(ENABLE_LIBVMAF) && ENABLE_LIBVMAF
     double        (*calculate_vmafscore)(x265_param *, x265_vmaf_data *);
     double        (*calculate_vmaf_framelevelscore)(x265_param *, x265_vmaf_framedata *);
     void          (*vmaf_encoder_log)(x265_encoder*, int, char**, x265_param *, x265_vmaf_data *);

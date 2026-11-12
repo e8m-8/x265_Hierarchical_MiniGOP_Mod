@@ -201,6 +201,12 @@ Logging/Statistic Options
 	enough ahead for the necessary reference data to be available. This
 	is more of a problem for P frames where some blocks are much more
 	expensive than others.
+
+	**Total ThreadedME Wait Time (ms)** Total time this frame waited for
+	ThreadedME to complete CTUs required for compression.
+
+	**Total ThreadedME Time (ms)** Total time spent by ThreadedME worker
+	threads on this frame.
 	
 .. option:: --csv-log-level <integer>
 
@@ -300,17 +306,27 @@ Performance Options
 	64-bit machines, or 16 for 32-bit machines. If the total number of threads
 	in the system doesn't obey this constraint, we may spawn fewer threads
 	than cores which has been empirically shown to be better for performance. 
+	When :option:`--threaded-me` is enabled, small final pools are retained
+	so its calculated thread allocation is not truncated. ThreadedME remains
+	a singleton scheduler, but uses proxy job providers when its workers span
+	multiple physical pools. No physical pool exceeds the bitmap thread limit.
 
-	If the four pool features: :option:`--wpp`, :option:`--pmode(deprecated)`,
-	:option:`--pme(deprecated)` and :option:`--lookahead-slices` are all disabled,
-	then :option:`--pools` is ignored and no thread pools are created.
+	If the five pool features: :option:`--wpp`, :option:`--pmode(deprecated)`,
+	:option:`--pme(deprecated)`, :option:`--lookahead-slices` and :option:`--threaded-me`
+	are all disabled, then :option:`--pools` is ignored and no thread pools are created.
 
-	If "none" is specified, then all four of the thread pool features are
+	If "none" is specified, then all of the thread pool features are
 	implicitly disabled.
 
-	Frame encoders are distributed between the available thread pools,
-	and the encoder will never generate more thread pools than
-	:option:`--frame-threads`.  The pools are used for WPP and for
+	When :option:`--threaded-me` is enabled, x265 estimates the number of
+	threads to assign to ThreadedME based on motion estimation workload and
+	assigns one or more leading physical thread pools to it. These pools may
+	span multiple NUMA nodes when the ThreadedME allocation target requires
+	it. The remaining pools are assigned to frame encoders and lookahead.
+
+	Frame encoders are distributed between the available frame pools,
+	and the encoder will never generate more frame pools than
+	:option:`--frame-threads`. The pools are used for WPP and for
 	distributed analysis and motion search.
 
 	On Windows, the native APIs offer sufficient functionality to
@@ -382,6 +398,29 @@ Performance Options
 	on the output bitstream.
 	
 	Default disabled
+
+.. option:: --threaded-me, --no-threaded-me
+
+	Threaded motion estimation. Uses a dedicated thread pool to pre-compute
+	motion estimation and evaluate PU combinations for CTUs in parallel.
+	It relaxes inter-frame CTU dependencies to increase parallelism, which
+	can reduce compression efficiency. Recommended on many-core CPUs when
+	encode speed is prioritized over compression efficiency.
+
+	This feature is automatically disabled in the following conditions:
+
+	- When no thread pool is present.
+	- When the detected CPU core count is less than 32.
+	- If VBV options are enabled, due to incompatibility with re-encoding trigggers.
+
+	Default disabled. **Experimental Feature**
+
+	.. note::
+		:option:`--threaded-me` currently provides encoding speedups only on
+		many-core machines running at low clock frequencies (at or below
+		approximately 1.5 GHz). On high-frequency systems or machines with
+		fewer cores, the overhead of the additional motion estimation work
+		may outweigh the parallelism gains.
 
 .. option:: --preset, -p <integer|string>
 
@@ -519,6 +558,11 @@ frame counts) are only applicable to the CLI application.
 	second. The decoder must re-combine the fields in their correct
 	orientation for display.
 
+	If the source pictures are interlaced frames, with both fields woven
+	into each picture (the usual layout of interlaced YUV and Y4M files),
+	also use :option:`--field`. In that case the source dimensions and FPS
+	are those of the frames, not the fields.
+
 .. option:: --frame-dup, --no-frame-dup
 
 	Enable Adaptive Frame duplication. Replaces 2-3 near-identical frames with one 
@@ -583,7 +627,19 @@ frame counts) are only applicable to the CLI application.
 
 .. option:: --field, --no-field
 
-	Enable or disable field coding. Default disabled.
+	Treat each input picture as an interlaced frame and split it into its
+	two fields before encoding. Requires :option:`--interlace`, which sets
+	the field order: the first field is the top field for tff and the
+	bottom field for bff. The source dimensions and FPS are those of the
+	frames; the encoder codes twice as many pictures at half the height.
+
+	Without :option:`--field`, the input must already be fields, as
+	described for :option:`--interlace`.
+
+	The split into fields is done by the x265 CLI. Applications using the
+	library must pass fields and set ``fieldNum`` in each
+	:c:type:`x265_picture` (1 for the first field, 2 for the second).
+	Default disabled.
 	
 Profile, Level, Tier
 ====================
@@ -1318,15 +1374,33 @@ Temporal / motion search options
 
 	Motion-compensated spatio-temporal filtering (MCSTF) improves the compression
 	efficiency of videos that contain a high level of noise. It introduces a
-	temporal filter before encoding and this filter is applied only to the I- and P-frames.
+	temporal filter before encoding, and this filter is applied unconditionally
+	to every I- and P-frame regardless of how noisy the source content actually is.
 	It utilizes previously generated motion vectors across different video content
 	resolutions to find the best temporal correspondence for low-pass filtering. Here,
 	motion estimation is applied between the central picture and each future or past
 	picture, thereby generating multiple motion-compensated predictions, which are then
 	combined by using adaptive filtering to produce a final noise-reduced picture.
+	To filter frames selectively based on their estimated noise level instead, use
+	:option:`--selective-mcstf`.
 	Default: disabled
 
-	Note : MCSTF should be enabled only with frame threads 1
+.. option:: --mcstf-ref-range
+
+	Number of reference frames to consider on each side (past and future) of the
+	current frame during Motion-compensated spatio-temporal filtering. A higher value
+	includes more temporal neighbors for filtering, which can improve noise reduction
+	at the cost of increased memory usage and processing time. The valid range is 1 to 4.
+	Default: 2
+
+.. option:: --selective-mcstf, --no-selective-mcstf
+
+	Gate MCSTF with a per-GOP noise estimate: skip the filter for GOPs whose
+	starting I/IDR frame (or scenecut) is estimated as clean (low noise), and
+	apply it only where it helps. Implicitly enables :option:`--mcstf` if it
+	was not already turned on. When :option:`--csv-log-level` is 2 or higher,
+	adds a Frame Noise and IsMCSTFEnabled column to the per-frame CSV log.
+	Default: disabled
 
 Spatial/intra options
 =====================
@@ -2369,6 +2443,7 @@ VUI fields must be manually specified.
 	12. chroma-derived-nc
 	13. chroma-derived-c
 	14. ictcp
+	15. ipt-pq-c2
 
 .. option:: --chromaloc <0..5>
 
@@ -2967,5 +3042,28 @@ Screen Content Coding (SCC) Options
 		Mode 2- Does a full and exhaustive search
 
 **CLI_ONLY**
+
+Foveated Encoding Options
+=========================
+
+	Foveated encoding is a smart video compression technique that saves network bandwidth by matching how human eyes see detail.
+	It delivers high image quality right where you look and lower quality in your side vision. It speeds up video streaming and
+	decoding for virtual reality and cloud gaming.
+
+.. option:: --fovea-gaze <x,y>
+
+	Static gaze fixation in pixels (e.g. 960,540 for center).
+
+.. option:: --fovea-delta <float>
+    
+	Max QP offset at periphery (0=disabled, range 5..40). Default 0.
+
+.. option:: --fovea-sigma <float>
+
+	Gaussian sigma in pixels (0=auto, 95px = 2.5 deg @ 60cm/24in). Default 0.
+
+.. option:: --fovea-gaze-file <path>
+
+	Per-frame gaze file (format: 'frame_num x y', one per line). Overrides --fovea-gaze.
 
 .. vim: noet

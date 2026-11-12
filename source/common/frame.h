@@ -102,7 +102,6 @@ public:
 
     Lowres                 m_lowres;
     bool                   m_lowresInit;         // lowres init complete (pre-analysis)
-    bool                   m_bChromaExtended;    // orig chroma planes motion extended for weight analysis
     bool                   m_reconfigureRc;
 
     float*                 m_quantOffsets;       // points to quantOffsets in x265_picture
@@ -113,8 +112,9 @@ public:
     /* Frame Parallelism - notification between FrameEncoders of available motion reference rows */
     ThreadSafeInteger*     m_reconRowFlag;       // flag of CTU rows completely reconstructed and extended for motion reference
     ThreadSafeInteger*     m_reconColCount;      // count of CTU cols completely reconstructed and extended for motion reference
+    ThreadSafeInteger*     m_ctuMEFlags;         // Flag to indicate if threaded me has completed processsing for CTUs
     int32_t                m_numRows;
-    volatile uint32_t      m_countRefEncoders;   // count of FrameEncoder threads monitoring m_reconRowCount
+    AtomicInt32            m_countRefEncoders;   // count of FrameEncoder threads monitoring m_reconRowCount
 
     Frame*                 m_next;               // PicList doubly linked list pointers
     Frame*                 m_prev;

@@ -56,15 +56,25 @@ int no_atomic_and(int* ptr, int mask);
 int no_atomic_inc(int* ptr);
 int no_atomic_dec(int* ptr);
 int no_atomic_add(int* ptr, int val);
+int64_t no_atomic_add64(int64_t* ptr, int64_t val);
 }
 
-#define CLZ(id, x)            id = (unsigned long)__builtin_clz(x) ^ 31
-#define CTZ(id, x)            id = (unsigned long)__builtin_ctz(x)
-#define ATOMIC_OR(ptr, mask)  no_atomic_or((int*)ptr, mask)
-#define ATOMIC_AND(ptr, mask) no_atomic_and((int*)ptr, mask)
-#define ATOMIC_INC(ptr)       no_atomic_inc((int*)ptr)
-#define ATOMIC_DEC(ptr)       no_atomic_dec((int*)ptr)
-#define ATOMIC_ADD(ptr, val)  no_atomic_add((int*)ptr, val)
+#define BSR(id, x)            (id) = ((unsigned long)__builtin_clz(x) ^ 31)
+#define BSF(id, x)            (id) = ((unsigned long)__builtin_ctz(x))
+#define BSR64(id, x)          (id) = ((unsigned long)__builtin_clzll(x) ^ 63)
+#define BSF64(id, x)          (id) = ((unsigned long)__builtin_ctzll(x))
+#define ATOMIC_OR(ptr, mask)  no_atomic_or(const_cast<int*>(reinterpret_cast<volatile int*>(ptr)), mask)
+#define ATOMIC_AND(ptr, mask) no_atomic_and(const_cast<int*>(reinterpret_cast<volatile int*>(ptr)), mask)
+#define ATOMIC_INC(ptr)       no_atomic_inc(const_cast<int*>(reinterpret_cast<volatile int*>(ptr)))
+#define ATOMIC_DEC(ptr)       no_atomic_dec(const_cast<int*>(reinterpret_cast<volatile int*>(ptr)))
+#define ATOMIC_ADD(ptr, val)  (sizeof(*(ptr)) == 8 ? \
+                               no_atomic_add64(const_cast<int64_t*>(reinterpret_cast<volatile int64_t*>(ptr)), (int64_t)(val)) : \
+                               no_atomic_add(const_cast<int*>(reinterpret_cast<volatile int*>(ptr)), (int)(val)))
+#define ATOMIC_LOAD(ptr)          (*(ptr))
+#define ATOMIC_STORE(ptr, val)    (*(ptr) = (int)(val))
+#define ATOMIC64_LOAD(ptr)        (*(ptr))
+#define ATOMIC64_STORE(ptr, val)  (*(ptr) = (val))
+#define ATOMIC64_ADD(ptr, val)    (*(ptr) += (val))
 #define GIVE_UP_TIME()        usleep(0)
 
 #elif __GNUC__               /* GCCs builtin atomics */
@@ -72,26 +82,42 @@ int no_atomic_add(int* ptr, int val);
 #include <sys/time.h>
 #include <unistd.h>
 
-#define CLZ(id, x)            id = (unsigned long)__builtin_clz(x) ^ 31
-#define CTZ(id, x)            id = (unsigned long)__builtin_ctz(x)
-#define ATOMIC_OR(ptr, mask)  __sync_fetch_and_or(ptr, mask)
-#define ATOMIC_AND(ptr, mask) __sync_fetch_and_and(ptr, mask)
-#define ATOMIC_INC(ptr)       __sync_add_and_fetch((volatile int32_t*)ptr, 1)
-#define ATOMIC_DEC(ptr)       __sync_add_and_fetch((volatile int32_t*)ptr, -1)
-#define ATOMIC_ADD(ptr, val)  __sync_fetch_and_add((volatile int32_t*)ptr, val)
+#define BSR(id, x)            (id) = ((unsigned long)__builtin_clz(x) ^ 31)
+#define BSF(id, x)            (id) = ((unsigned long)__builtin_ctz(x))
+#define BSR64(id, x)          (id) = ((unsigned long)__builtin_clzll(x) ^ 63)
+#define BSF64(id, x)          (id) = ((unsigned long)__builtin_ctzll(x))
+#define ATOMIC_OR(ptr, mask)  __atomic_fetch_or(ptr, mask, __ATOMIC_SEQ_CST)
+#define ATOMIC_AND(ptr, mask) __atomic_fetch_and(ptr, mask, __ATOMIC_SEQ_CST)
+#define ATOMIC_INC(ptr)       __atomic_add_fetch(reinterpret_cast<volatile int32_t*>(ptr), 1, __ATOMIC_SEQ_CST)
+#define ATOMIC_DEC(ptr)       __atomic_sub_fetch(reinterpret_cast<volatile int32_t*>(ptr), 1, __ATOMIC_SEQ_CST)
+#define ATOMIC_ADD(ptr, val)  __atomic_fetch_add(reinterpret_cast<volatile __typeof__(*(ptr))*>(ptr), (__typeof__(*(ptr) + 0))(val), __ATOMIC_SEQ_CST)
+#define ATOMIC_LOAD(ptr)          __atomic_load_n(ptr, __ATOMIC_SEQ_CST)
+#define ATOMIC_STORE(ptr, val)    __atomic_exchange_n(reinterpret_cast<volatile int32_t*>(ptr), (int32_t)(val), __ATOMIC_SEQ_CST)
+#define ATOMIC64_LOAD(ptr)        __atomic_load_n(reinterpret_cast<volatile int64_t*>(ptr), __ATOMIC_SEQ_CST)
+#define ATOMIC64_STORE(ptr, val)  __atomic_exchange_n(reinterpret_cast<volatile int64_t*>(ptr), val, __ATOMIC_SEQ_CST)
+#define ATOMIC64_ADD(ptr, val)    __atomic_fetch_add(reinterpret_cast<volatile int64_t*>(ptr), val, __ATOMIC_SEQ_CST)
 #define GIVE_UP_TIME()        usleep(0)
 
 #elif defined(_MSC_VER)       /* Windows atomic intrinsics */
 
 #include <intrin.h>
 
-#define CLZ(id, x)            _BitScanReverse(&id, x)
-#define CTZ(id, x)            _BitScanForward(&id, x)
-#define ATOMIC_INC(ptr)       InterlockedIncrement((volatile LONG*)ptr)
-#define ATOMIC_DEC(ptr)       InterlockedDecrement((volatile LONG*)ptr)
-#define ATOMIC_ADD(ptr, val)  InterlockedExchangeAdd((volatile LONG*)ptr, val)
-#define ATOMIC_OR(ptr, mask)  _InterlockedOr((volatile LONG*)ptr, (LONG)mask)
-#define ATOMIC_AND(ptr, mask) _InterlockedAnd((volatile LONG*)ptr, (LONG)mask)
+#define BSR(id, x)            _BitScanReverse(&id, x)
+#define BSF(id, x)            _BitScanForward(&id, x)
+#define BSR64(id, x)          _BitScanReverse64(&id, x)
+#define BSF64(id, x)          _BitScanForward64(&id, x)
+#define ATOMIC_INC(ptr)       InterlockedIncrement(reinterpret_cast<volatile LONG*>(ptr))
+#define ATOMIC_DEC(ptr)       InterlockedDecrement(reinterpret_cast<volatile LONG*>(ptr))
+#define ATOMIC_ADD(ptr, val)  (sizeof(*(ptr)) == 8 ? \
+                               InterlockedExchangeAdd64(reinterpret_cast<volatile LONGLONG*>(ptr), (LONGLONG)(val)) : \
+                               InterlockedExchangeAdd(reinterpret_cast<volatile LONG*>(ptr), (LONG)(val)))
+#define ATOMIC_OR(ptr, mask)  _InterlockedOr(reinterpret_cast<volatile LONG*>(ptr), static_cast<LONG>(mask))
+#define ATOMIC_AND(ptr, mask) _InterlockedAnd(reinterpret_cast<volatile LONG*>(ptr), static_cast<LONG>(mask))
+#define ATOMIC_LOAD(ptr)          _InterlockedOr(reinterpret_cast<volatile LONG*>(ptr), 0)
+#define ATOMIC_STORE(ptr, val)    InterlockedExchange(reinterpret_cast<volatile LONG*>(ptr), (LONG)(val))
+#define ATOMIC64_LOAD(ptr)        InterlockedAdd64(reinterpret_cast<volatile LONG64*>(ptr), 0)
+#define ATOMIC64_STORE(ptr, val)  InterlockedExchange64(reinterpret_cast<volatile LONG64*>(ptr), val)
+#define ATOMIC64_ADD(ptr, val)    InterlockedAdd64(reinterpret_cast<volatile LONG64*>(ptr), val)
 #define GIVE_UP_TIME()        Sleep(0)
 
 #endif // ifdef __GNUC__
@@ -441,8 +467,9 @@ public:
         pthread_mutex_lock(&m_mutex);
         if (m_val == prev)
             pthread_cond_wait(&m_cond, &m_mutex);
+        int ret = m_val;
         pthread_mutex_unlock(&m_mutex);
-        return m_val;
+        return ret;
     }
 
     int get()
@@ -801,6 +828,48 @@ protected:
     Lock &inst;
 };
 
+/* Lock-free spin lock using platform atomic ops (no CRITICAL_SECTION on Windows).
+ * TSan-friendly because acquire/release use the same ATOMIC_OR/ATOMIC_STORE
+ * intrinsics that TSan understands as synchronization points. */
+class SpinLock
+{
+public:
+    SpinLock() : m_val(0) {}
+    /* Copy-construct as a fresh unlocked instance — the lock state itself
+     * must never be copied (same semantics as std::mutex). */
+    SpinLock(const SpinLock&) : m_val(0) {}
+    /* Intentionally does not touch m_val: copying another instance's lock
+     * state into this one would be a real bug, not the omission cppcheck
+     * suspects (see class comment above). */
+    // cppcheck-suppress operatorEqVarError
+    SpinLock& operator=(const SpinLock&) { return *this; }
+
+    void acquire()
+    {
+        while (ATOMIC_OR(&m_val, 1) & 1)
+            GIVE_UP_TIME();
+    }
+
+    void release()
+    {
+        ATOMIC_STORE(&m_val, 0);
+    }
+
+private:
+    mutable volatile int32_t m_val;
+};
+
+class ScopedSpinLock
+{
+public:
+    explicit ScopedSpinLock(SpinLock& instance) : inst(instance) { inst.acquire(); }
+    ~ScopedSpinLock() { inst.release(); }
+
+protected:
+    ScopedSpinLock& operator=(const ScopedSpinLock&);
+    SpinLock& inst;
+};
+
 // Utility class which adds elapsed time of the scope of the object into the
 // accumulator provided to the constructor
 struct ScopedElapsedTime
@@ -816,6 +885,126 @@ protected:
 
     // do not allow assignments
     ScopedElapsedTime &operator =(const ScopedElapsedTime &);
+};
+
+/* Atomic wrapper classes for C++98 compatible thread-safe access.
+ * These replace raw ATOMIC_* macro calls at every site with a type
+ * that enforces atomic access automatically through operator overloads.
+ * Declaring a variable as AtomicBool/AtomicInt32/AtomicInt64 makes it
+ * impossible to access it non-atomically by accident. */
+
+/* Generic abstraction for atomic operations on integers of various sizes (4 vs 8 bytes). */
+template<int N> struct AtomicOps;
+
+template<> struct AtomicOps<4>
+{
+    typedef int32_t Storage;
+    static int32_t load(volatile Storage* p)              { return (int32_t)ATOMIC_LOAD(p); }
+    static void    store(volatile Storage* p, int32_t v)  { ATOMIC_STORE(p, v); }
+    static int32_t inc(volatile Storage* p)               { return (int32_t)ATOMIC_INC(p); }
+    static int32_t dec(volatile Storage* p)               { return (int32_t)ATOMIC_DEC(p); }
+    static int32_t add(volatile Storage* p, int32_t v)    { return (int32_t)ATOMIC_ADD(p, v); }
+    static int32_t fetchOr(volatile Storage* p, int32_t m){ return (int32_t)ATOMIC_OR(p, m); }
+    static int32_t fetchAnd(volatile Storage* p, int32_t m){ return (int32_t)ATOMIC_AND(p, m); }
+};
+
+template<> struct AtomicOps<8>
+{
+    typedef int64_t Storage;
+    static int64_t load(volatile Storage* p)              { return (int64_t)ATOMIC64_LOAD(p); }
+    static void    store(volatile Storage* p, int64_t v)  { ATOMIC64_STORE(p, v); }
+    static int64_t add(volatile Storage* p, int64_t v)    { return (int64_t)ATOMIC64_ADD(p, v); }
+};
+
+/* Generic atomic integer */
+template<typename T>
+class Atomic
+{
+    typedef AtomicOps<sizeof(T)> Ops;
+    typedef typename Ops::Storage Storage;
+
+public:
+    Atomic() : m_val(0) {}
+    explicit Atomic(T v) : m_val((Storage)v) {}
+
+    operator T() const          { return (T)Ops::load(&m_val); }
+
+    Atomic& operator=(T v)      { Ops::store(&m_val, (Storage)v); return *this; }
+
+    T operator++()              { return (T)Ops::inc(&m_val); }
+    T operator++(int)           { return fetchAdd((T)1); }
+    T operator--()              { return (T)Ops::dec(&m_val); }
+    T fetchAdd(T v)             { return (T)Ops::add(&m_val, (Storage)v); }
+    T fetchOr(T mask)           { return (T)Ops::fetchOr(&m_val, (Storage)mask); }
+    T fetchAnd(T mask)          { return (T)Ops::fetchAnd(&m_val, (Storage)mask); }
+    void add(T v)               { Ops::add(&m_val, (Storage)v); }
+
+private:
+    Atomic(const Atomic&);
+    Atomic& operator=(const Atomic&);
+    mutable volatile Storage m_val;
+};
+
+typedef Atomic<int32_t>  AtomicInt32;
+typedef Atomic<uint32_t> AtomicUInt32;
+typedef Atomic<int64_t>  AtomicInt64;
+
+/* Lock-free atomic double using int64_t storage with memcpy bit-casting.
+ * Needed because Atomic<T> casts through Storage (int64_t), which truncates
+ * floating-point values. This uses the same ATOMIC64_LOAD/STORE macros and
+ * works across all three platform backends (no-atomics, GCC, MSVC). */
+class AtomicDouble
+{
+public:
+    AtomicDouble() : m_val(0) {}
+    explicit AtomicDouble(double v) : m_val(0) { store(v); }
+
+    double load() const
+    {
+        int64_t bits = ATOMIC64_LOAD(&m_val);
+        double result;
+        memcpy(&result, &bits, sizeof(double));
+        return result;
+    }
+
+    void store(double v)
+    {
+        int64_t bits;
+        memcpy(&bits, &v, sizeof(double));
+        ATOMIC64_STORE(&m_val, bits);
+    }
+
+    operator double() const        { return load(); }
+    AtomicDouble& operator=(double v) { store(v); return *this; }
+
+private:
+    AtomicDouble(const AtomicDouble&);
+    AtomicDouble& operator=(const AtomicDouble&);
+    mutable volatile int64_t m_val;
+};
+
+/* Exclusive wrapper rather than an Atomic<bool> (as sizeof(bool) is not 4). */
+class AtomicBool
+{
+public:
+    AtomicBool() : m_val(0) {}
+    explicit AtomicBool(bool v) : m_val(v ? 1 : 0) {}
+
+    operator bool() const
+    {
+        return (int32_t)ATOMIC_LOAD(&m_val) != 0;
+    }
+
+    AtomicBool& operator=(bool v)
+    {
+        ATOMIC_STORE(&m_val, v ? 1 : 0);
+        return *this;
+    }
+
+private:
+    AtomicBool(const AtomicBool&);
+    AtomicBool& operator=(const AtomicBool&);
+    mutable volatile int32_t m_val;
 };
 
 //< Simplistic portable thread class.  Shutdown signalling left to derived class

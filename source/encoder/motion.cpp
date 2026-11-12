@@ -329,9 +329,9 @@ void MotionEstimate::setSourcePU(const Yuv& srcFencYuv, int _ctuAddr, int cuPart
     fref + (m1x) + (m1y) * stride, \
     fref + (m2x) + (m2y) * stride, \
     stride, costs); \
-    costs[0] += p_cost_mvx[(m0x) << 2]; /* no cost_mvy */\
-    costs[1] += p_cost_mvx[(m1x) << 2]; \
-    costs[2] += p_cost_mvx[(m2x) << 2]; \
+    costs[0] += p_cost_mvx[(m0x) * 4]; /* no cost_mvy */\
+    costs[1] += p_cost_mvx[(m1x) * 4]; \
+    costs[2] += p_cost_mvx[(m2x) * 4]; \
     COPY3_IF_LT(bcost, costs[0], bmv.x, m0x, bmv.y, m0y); \
     COPY3_IF_LT(bcost, costs[1], bmv.x, m1x, bmv.y, m1y); \
     COPY3_IF_LT(bcost, costs[2], bmv.x, m2x, bmv.y, m2y); \
@@ -628,6 +628,165 @@ void MotionEstimate::StarPatternSearch(ReferencePlanes *ref,
     }
 }
 
+int MotionEstimate::diamondSearch(ReferencePlanes* ref, const MV& mvmin, const MV& mvmax, MV& outMV)
+{
+    int bcost = INT_MAX;
+    MV bmv(0, 0);
+    MV omv = bmv;
+
+    ALIGN_VAR_16(int, costs[16]);
+
+    intptr_t stride = ref->lumaStride;
+    pixel* fenc = fencPUYuv.m_buf[0];
+    pixel* fref = ref->fpelPlane[0] + blockOffset;
+
+    for (int16_t dist = 1; dist <= 4; dist <<= 1)
+    {
+        const MV bmv0 = bmv;
+        const int32_t top = omv.y - dist;
+        const int32_t bottom = omv.y + dist;
+        const int32_t left = omv.x - dist;
+        const int32_t right = omv.x + dist;
+        const int32_t top2 = omv.y - (dist >> 1);
+        const int32_t bottom2 = omv.y + (dist >> 1);
+        const int32_t left2 = omv.x - (dist >> 1);
+        const int32_t right2 = omv.x + (dist >> 1);
+
+        if (top >= mvmin.y && left >= mvmin.x && right <= mvmax.x && bottom <= mvmax.y)
+        {
+            COST_MV_X4(omv.x, top, omv.x, bottom, left, omv.y, right, omv.y);
+            COST_MV_X4(left2, top2, right2, top2, left2, bottom2, right2, bottom2);
+        }
+        else // check border for each mv
+        {
+            if (top >= mvmin.y) // check top
+            {
+                COST_MV(omv.x, top);
+            }
+            if (top2 >= mvmin.y) // check half top
+            {
+                if (left2 >= mvmin.x)  // check half left
+                {
+                    COST_MV(left2, top2);
+                }
+                if (right2 <= mvmax.x) // check half right
+                {
+                    COST_MV(right2, top2);
+                }
+            }
+            if (left >= mvmin.x) // check left
+            {
+                COST_MV(left, omv.y);
+            }
+            if (right <= mvmax.x) // check right
+            {
+                COST_MV(right, omv.y);
+            }
+            if (bottom2 <= mvmax.y) // check half bottom
+            {
+                if (left2 >= mvmin.x) // check half left
+                {
+                    COST_MV(left2, bottom2);
+                }
+                if (right2 <= mvmax.x) // check half right
+                {
+                    COST_MV(right2, bottom2);
+                }
+            }
+            if (bottom <= mvmax.y) // check bottom
+            {
+                COST_MV(omv.x, bottom);
+            }
+        }
+
+        if (bmv == bmv0)
+            break;
+    }
+
+    omv = bmv;
+    for (int16_t dist = 8; dist <= 64; dist += 8)
+    {
+        const MV bmv0 = bmv;
+        const int32_t top = omv.y - dist;
+        const int32_t bottom = omv.y + dist;
+        const int32_t left = omv.x - dist;
+        const int32_t right = omv.x + dist;
+
+        if (top >= mvmin.y && left >= mvmin.x && right <= mvmax.x && bottom <= mvmax.y)
+        {
+            COST_MV_X4(omv.x, top, left, omv.y, right, omv.y, omv.x, bottom);
+
+            for (int16_t index = 1; index < 4; index++)
+            {
+                int32_t posYT = top + ((dist >> 2) * index);
+                int32_t posYB = bottom - ((dist >> 2) * index);
+                int32_t posXL = omv.x - ((dist >> 2) * index);
+                int32_t posXR = omv.x + ((dist >> 2) * index);
+
+                COST_MV_X4(posXL, posYT,
+                    posXR, posYT,
+                    posXL, posYB,
+                    posXR, posYB);
+            }
+        }
+        else // check border for each mv
+        {
+            if (top >= mvmin.y) // check top
+            {
+                COST_MV(omv.x, top);
+            }
+            if (left >= mvmin.x) // check left
+            {
+                COST_MV(left, omv.y);
+            }
+            if (right <= mvmax.x) // check right
+            {
+                COST_MV(right, omv.y);
+            }
+            if (bottom <= mvmax.y) // check bottom
+            {
+                COST_MV(omv.x, bottom);
+            }
+            for (int16_t index = 1; index < 4; index++)
+            {
+                int32_t posYT = top + ((dist >> 2) * index);
+                int32_t posYB = bottom - ((dist >> 2) * index);
+                int32_t posXL = omv.x - ((dist >> 2) * index);
+                int32_t posXR = omv.x + ((dist >> 2) * index);
+
+                if (posYT >= mvmin.y) // check top
+                {
+                    if (posXL >= mvmin.x) // check left
+                    {
+                        COST_MV(posXL, posYT);
+                    }
+                    if (posXR <= mvmax.x) // check right
+                    {
+                        COST_MV(posXR, posYT);
+                    }
+                }
+                if (posYB <= mvmax.y) // check bottom
+                {
+                    if (posXL >= mvmin.x) // check left
+                    {
+                        COST_MV(posXL, posYB);
+                    }
+                    if (posXR <= mvmax.x) // check right
+                    {
+                        COST_MV(posXR, posYB);
+                    }
+                }
+            }
+        }
+
+        if (bmv == bmv0)
+            break;
+        omv = bmv;
+    }
+    outMV = bmv;
+    return bcost;
+}
+
 void MotionEstimate::refineMV(ReferencePlanes* ref,
                               const MV&        mvmin,
                               const MV&        mvmax,
@@ -846,7 +1005,11 @@ int MotionEstimate::motionEstimate(ReferencePlanes *ref,
 
     pmv = pmv.roundToFPel();
     MV omv = bmv;  // current search origin or starting point
-
+    if (bcost == 0)
+    {
+        outQMv = bmv.toQPel();
+        return mvcost(bmv << 2); // return just the MV cost (no residual)
+    }
     int search = ref->isHMELowres ? (hme ? searchMethodL0 : searchMethodL1) : searchMethod;
     switch (search)
     {
@@ -866,8 +1029,8 @@ int MotionEstimate::motionEstimate(ReferencePlanes *ref,
             COPY1_IF_LT(bcost, (costs[3] << 4) + 12);
             if (!(bcost & 15))
                 break;
-            bmv.x -= (bcost << 28) >> 30;
-            bmv.y -= (bcost << 30) >> 30;
+            bmv.x -= (int32_t)((uint32_t)bcost << 28) >> 30;
+            bmv.y -= (int32_t)((uint32_t)bcost << 30) >> 30;
             bcost &= ~15;
         }
         while (--i && bmv.checkRange(mvmin, mvmax));
@@ -1152,7 +1315,7 @@ me_hex2:
                 if (dir)
                 {
                     bmv.x = omv.x + i * (dir >> 4);
-                    bmv.y = omv.y + i * ((dir << 28) >> 28);
+                    bmv.y = omv.y + i * ((int32_t)((uint32_t)dir << 28) >> 28);
                 }
             }
         }
@@ -1335,11 +1498,13 @@ me_hex2:
 
         /* Successive elimination by comparing DC before a full SAD,
          * because sum(abs(diff)) >= abs(diff(sum)). */
+        int sad4DeltaX = (horizontalRect && w <= 8) ? (w >> 1) : deltaX;
+        int sad4DeltaY = (verticalRect && h <= 8) ? (h >> 1) : deltaY;
         primitives.pu[tempPartEnum].sad_x4(zero,
                          fenc,
-                         fenc + deltaX,
-                         fenc + deltaY * FENC_STRIDE,
-                         fenc + deltaX + deltaY * FENC_STRIDE,
+                         fenc + sad4DeltaX,
+                         fenc + sad4DeltaY * FENC_STRIDE,
+                         fenc + sad4DeltaX + sad4DeltaY * FENC_STRIDE,
                          FENC_STRIDE,
                          encDC);
 
@@ -1596,6 +1761,14 @@ me_hex2:
     // check mv range for slice bound
     X265_CHECK(((bmv.y >= qmvmin.y) & (bmv.y <= qmvmax.y)), "mv beyond range!");
 
+    // Get a chance to ZeroMv
+    if (bmv.notZero())
+    {
+      int cost = subpelCompare(ref, MV(0, 0), satd) + mvcost(MV(0, 0));
+      if (cost <= bcost)
+        bmv = MV(0, 0);
+    }
+
     x265_emms();
     outQMv = bmv;
     return bcost;
@@ -1636,8 +1809,8 @@ int MotionEstimate::subpelCompare(ReferencePlanes *ref, const MV& qmv, pixelcmp_
         int csp    = fencPUYuv.m_csp;
         int hshift = fencPUYuv.m_hChromaShift;
         int vshift = fencPUYuv.m_vChromaShift;
-        int mvx = qmv.x << (1 - hshift);
-        int mvy = qmv.y << (1 - vshift);
+        int mvx = (int32_t)((uint32_t)qmv.x << (1 - hshift));
+        int mvy = (int32_t)((uint32_t)qmv.y << (1 - vshift));
         intptr_t fencStrideC = fencPUYuv.m_csize;
 
         intptr_t refStrideC = ref->reconPic->m_strideC;

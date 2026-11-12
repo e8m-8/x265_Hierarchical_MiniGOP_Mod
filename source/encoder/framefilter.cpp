@@ -385,15 +385,21 @@ void FrameFilter::ParallelFilter::processPostCu(int col) const
     if ((col == 0) | (col == m_frameFilter->m_numCols - 1))
     {
         copySizeY += lumaMarginX;
-        copySizeC += chromaMarginX;
+        if (m_frameFilter->m_param->internalCsp != X265_CSP_I400)
+        {
+            copySizeC += chromaMarginX;
+        }
     }
 
     // First column need extension left padding area and first CU
     if (col == 0)
     {
         pixY -= lumaMarginX;
-        pixU -= chromaMarginX;
-        pixV -= chromaMarginX;
+        if (m_frameFilter->m_param->internalCsp != X265_CSP_I400)
+        {
+            pixU -= chromaMarginX;
+            pixV -= chromaMarginX;
+        }
     }
 
     // Border extend Top
@@ -416,8 +422,11 @@ void FrameFilter::ParallelFilter::processPostCu(int col) const
     if (m_row == m_frameFilter->m_numRows - 1)
     {
         pixY += (realH - 1) * stride;
-        pixU += ((realH >> vChromaShift) - 1) * strideC;
-        pixV += ((realH >> vChromaShift) - 1) * strideC;
+        if (m_frameFilter->m_param->internalCsp != X265_CSP_I400)
+        {
+            pixU += ((realH >> vChromaShift) - 1) * strideC;
+            pixV += ((realH >> vChromaShift) - 1) * strideC;
+        }
         for (uint32_t y = 0; y < lumaMarginY; y++)
             memcpy(pixY + (y + 1) * stride, pixY, copySizeY * sizeof(pixel));
 
@@ -663,7 +672,7 @@ void FrameFilter::processPostRow(int row, int layer)
     uint32_t cuAddr = lineStartCUAddr;
     if (m_param->bEnablePsnr)
     {
-        PicYuv* fencPic = m_frame->m_fencPic;
+        PicYuv* fencPic = m_param->bEnableTemporalFilter ? m_frame->m_mcstffencPic : m_frame->m_fencPic;
 
         intptr_t stride = reconPic->m_stride;
         uint32_t width  = reconPic->m_picWidth - m_pad[0];
@@ -689,7 +698,7 @@ void FrameFilter::processPostRow(int row, int layer)
     if (m_param->bEnableSsim && m_ssimBuf)
     {
         pixel *rec = reconPic->m_picOrg[0];
-        pixel *fenc = m_frame->m_fencPic->m_picOrg[0];
+        pixel *fenc = m_param->bEnableTemporalFilter ? m_frame->m_mcstffencPic->m_picOrg[0] : m_frame->m_fencPic->m_picOrg[0];
         intptr_t stride1 = reconPic->m_stride;
         intptr_t stride2 = m_frame->m_fencPic->m_stride;
         uint32_t bEnd = ((row) == (this->m_numRows - 1));

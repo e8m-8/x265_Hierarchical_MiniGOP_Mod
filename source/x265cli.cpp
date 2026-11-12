@@ -84,8 +84,8 @@ namespace X265_NS {
         H0("   --nalu-file <filename>        Text file containing SEI messages in the following format : <POC><space><PREFIX><space><NAL UNIT TYPE>/<SEI TYPE><space><SEI Payload>\n");
         H0("-f/--frames <integer>            Maximum number of frames to encode. Default all\n");
         H0("   --seek <integer>              First frame to encode\n");
-        H1("   --[no-]interlace <bff|tff>    Indicate input pictures are interlace fields in temporal order. Default progressive\n");
-        H0("   --[no-]field                  Enable or disable field coding. Default %s\n", OPT(param->bField));
+        H1("   --[no-]interlace <bff|tff>    Input pictures are interlaced fields in temporal order (use --field for interlaced frames). Default progressive\n");
+        H0("   --[no-]field                  Input pictures are interlaced frames. Split each into two fields (use with --interlace). Default %s\n", OPT(param->bField));
         H1("   --dither                      Enable dither if downscaling to 8 bit pixels. Default disabled\n");
         H0("   --[no-]copy-pic               Copy buffers of input picture in the frame. Default %s\n", OPT(param->bCopyPicToFrame));
         H0("\nQuality reporting metrics:\n");
@@ -103,8 +103,9 @@ namespace X265_NS {
         H0("-F/--frame-threads <integer>     Number of concurrently encoded frames. 0: auto-determined by core count\n");
         H0("   --[no-]wpp                    Enable Wavefront Parallel Processing. Default %s\n", OPT(param->bEnableWavefront));
         H0("   --[no-]slices <integer>       Enable Multiple Slices feature. Default %d\n", param->maxSlices);
-        H0("   --[no-]pmode                  Parallel mode analysis. Default %s\n", OPT(param->bDistributeModeAnalysis));
-        H0("   --[no-]pme                    Parallel motion estimation. Default %s\n", OPT(param->bDistributeMotionEstimation));
+        H0("   --[no-]pmode                  Parallel mode analysis. Deprecated from release 4.1. Default %s\n", OPT(param->bDistributeModeAnalysis));
+        H0("   --[no-]pme                    Parallel motion estimation. Deprecated from release 4.1. Default %s\n", OPT(param->bDistributeMotionEstimation));
+        H0("   --[no-]threaded-me            Enables standalone multi-threaded module for motion estimation at CTU level. Default %s\n", OPT(param->bThreadedME));
         H0("   --[no-]asm <bool|int|string>  Override CPU detection. Default: auto\n");
         H0("\nPresets:\n");
         H0("-p/--preset <string>             Trade off performance for compression efficiency. Default medium\n");
@@ -300,6 +301,11 @@ namespace X265_NS {
         H0("   --[no-]aq-motion              Block level QP adaptation based on the relative motion between the block and the frame. Default %s\n", OPT(param->bAQMotion));
         H1("   --[no-]sbrc                   Enables the segment based rate control. Default %s\n", OPT(param->bEnableSBRC));
         H0("   --qg-size <int>               Specifies the size of the quantization group (64, 32, 16, 8). Default %d\n", param->rc.qgSize);
+        H0("\nFoveated encoding options (gaze-contingent per-QG QP mapping):\n");
+        H0("   --fovea-gaze <x,y>            Static gaze fixation in pixels (e.g. 960,540 for center).\n");
+        H0("   --fovea-delta <float>         Max QP offset at periphery (0=disabled, range 5..40). Default 0.\n");
+        H0("   --fovea-sigma <float>         Gaussian sigma in pixels (0=auto: 95px = 2.5 deg @ 60cm/24in). Default 0.\n");
+        H0("   --fovea-gaze-file <path>      Per-frame gaze file (format: 'frame_num x y', one per line). Overrides --fovea-gaze.\n");
         H0("   --[no-]cutree                 Enable cutree for Adaptive Quantization. Default %s\n", OPT(param->rc.cuTree));
         H0("   --[no-]rc-grain               Enable rate-control mode to handle grains specifically. Turned on with tune grain. Default %s\n", OPT(param->rc.bEnableGrain));
         H0("   --ipratio <float>             QP factor between I and P. Default %.2f\n", param->rc.ipFactor);
@@ -354,7 +360,7 @@ namespace X265_NS {
         H0("                                 smpte240m, linear, log100, log316, iec61966-2-4, bt1361e, iec61966-2-1,\n");
         H0("                                 bt2020-10, bt2020-12, smpte2084, smpte428, arib-std-b67. Default unknown\n");
         H1("   --colormatrix <string>        Specify color matrix setting from unknown, bt709, fcc, bt470bg, smpte170m,\n");
-        H1("                                 smpte240m, gbr, ycgco, bt2020nc, bt2020c, smpte2085, chroma-derived-nc, chroma-derived-c, ictcp. Default unknown\n");
+        H1("                                 smpte240m, gbr, ycgco, bt2020nc, bt2020c, smpte2085, chroma-derived-nc, chroma-derived-c, ictcp, ipt-pq-c2. Default unknown\n");
         H1("   --chromaloc <integer>         Specify chroma sample location (0 to 5). Default of %d\n", param->vui.chromaSampleLocTypeTopField);
         H0("   --master-display <string>     SMPTE ST 2086 master display color volume info SEI (HDR)\n");
         H0("                                    format: G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)\n");
@@ -434,6 +440,8 @@ namespace X265_NS {
         H0("   --[no-]frame-dup              Enable Frame duplication. Default %s\n", OPT(param->bEnableFrameDuplication));
         H0("   --dup-threshold <integer>     PSNR threshold for Frame duplication. Default %d\n", param->dupThreshold);
         H0("   --[no-]mcstf                  Enable GOP-based temporal filter. Default %d\n", param->bEnableTemporalFilter);
+        H0("   --mcstf-ref-range <0..4>      Maximum number of range for MCSTF. Default %d\n", param->mcstfFrameRange);
+        H0("   --[no-]selective-mcstf        Skip MCSTF for GOPs estimated as clean (low noise). Default %d\n", param->bSelectiveMCSTF);
 #if ENABLE_ALPHA
         H0("   --alpha                       Enable alpha channel support. Default %d\n", param->bEnableAlpha);
 #endif
@@ -525,7 +533,25 @@ namespace X265_NS {
         if (output)
             output->release();
         output = NULL;
-    }
+
+        if (param && param->foveaGazeFile)
+            free(param->foveaGazeFile);
+
+        if (param && api)
+        {
+            api->param_free(param);
+            param = NULL;
+        }
+        // Free dynamically allocated input filenames
+        for (int i = 0; i < MAX_VIEWS; i++)
+        {
+            if (inputfn[i])
+            {
+                X265_FREE(inputfn[i]);
+                inputfn[i] = NULL;
+            }
+        }
+   }
 
     void CLIOptions::printStatus(uint32_t frameNum)
     {
@@ -662,12 +688,17 @@ namespace X265_NS {
 
     bool CLIOptions::parse(int argc, char **argv)
     {
+        if (argc <= 1)
+        {
+            x265_log(NULL, X265_LOG_ERROR, "No input file. Run x265 --help for a list of options.\n");
+            return true;
+        }
+
         bool bError = false;
         int bShowHelp = false;
         int inputBitDepth = 8;
         int outputBitDepth = 0;
         int reconFileBitDepth = 0;
-        char* inputfn[MAX_VIEWS] = { NULL };
         for (int view = 0; view < MAX_VIEWS; view++)
         {
             inputfn[view] = X265_MALLOC(char, sizeof(char) * 1024);
@@ -680,12 +711,6 @@ namespace X265_NS {
         const char *profile = NULL;
         int svtEnabled = 0;
         argCnt = argc;
-
-        if (argc <= 1)
-        {
-            x265_log(NULL, X265_LOG_ERROR, "No input file. Run x265 --help for a list of options.\n");
-            return true;
-        }
 
         /* Presets are applied before all other options. */
         for (optind = 0;;)
@@ -1061,6 +1086,11 @@ namespace X265_NS {
         {
             if (reconFileBitDepth == 0)
                 reconFileBitDepth = param->internalBitDepth;
+            else if (reconFileBitDepth != param->internalBitDepth && reconFileBitDepth != 8)
+            {
+                x265_log(param, X265_LOG_ERROR, "unsupported output-depth and recon-depth combination\n");
+                return true;
+            }
 #if ENABLE_ALPHA || ENABLE_MULTIVIEW
             if (param->bEnableAlpha || param->numViews > 1)
             {
@@ -1078,7 +1108,7 @@ namespace X265_NS {
             for (int i = 0; i < param->numLayers; i++)
             {
                 this->recon[i] = ReconFile::open(reconfn[i], param->sourceWidth, param->sourceHeight, reconFileBitDepth,
-                    param->fpsNum, param->fpsDenom, param->internalCsp, param->sourceBitDepth);
+                    param->fpsNum, param->fpsDenom, param->internalCsp);
                 if (this->recon[i]->isFail())
                 {
                     x265_log(param, X265_LOG_WARNING, "unable to write reconstructed outputs file\n");

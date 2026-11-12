@@ -36,6 +36,8 @@
 #include "nal.h"
 #include "temporalfilter.h"
 
+#include <iostream>
+
 namespace X265_NS {
 void weightAnalyse(Slice& slice, Frame& frame, x265_param& param);
 
@@ -196,9 +198,11 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     // 7.4.7.1 - Ceil( Log2( PicSizeInCtbsY ) ) bits
     {
         unsigned long tmp;
-        CLZ(tmp, (numRows * numCols - 1));
+        BSR(tmp, (numRows * numCols - 1));
         m_sliceAddrBits = (uint16_t)(tmp + 1);
     }
+
+    m_tmeDeps.resize(m_numRows);
 
     m_retFrameBuffer = X265_MALLOC(Frame*, m_param->numLayers);
     for (int layer = 0; layer < m_param->numLayers; layer++)
@@ -374,7 +378,7 @@ uint32_t getBsLength( int32_t code )
 
     ++ucode;
     unsigned long idx;
-    CLZ( idx, ucode );
+    BSR( idx, ucode );
     uint32_t length = (uint32_t)idx * 2 + 1;
 
     return length;
@@ -447,6 +451,8 @@ void FrameEncoder::compressFrame(int layer)
     m_totalActiveWorkerCount = 0;
     m_activeWorkerCountSamples = 0;
     m_totalWorkerElapsedTime[layer] = 0;
+    m_totalThreadedMETime[layer] = 0;
+    m_totalThreadedMEWait[layer] = 0;
     m_totalNoWorkerTime[layer] = 0;
     m_countRowBlocks = 0;
     m_allRowsAvailableTime[layer] = 0;
@@ -654,10 +660,10 @@ void FrameEncoder::compressFrame(int layer)
             }
         }
     }
-    if (m_param->bEnableTemporalFilter)
+    if (m_param->bEnableTemporalFilter && m_top->isFilterThisframe(m_frame[layer]->m_mcstf->m_sliceTypeConfig, m_frame[layer]->m_lowres.sliceType) && m_frame[layer]->m_lowres.filterThisGOP)
     {
         m_frame[layer]->m_mcstf->m_QP = qp;
-        m_frame[layer]->m_mcstf->bilateralFilter(m_frame[layer], m_frame[layer]->m_mcstfRefList, m_param->temporalFilterStrength);
+        m_frame[layer]->m_mcstf->bilateralFilter(m_frame[layer], m_frame[layer]->m_mcstfRefList, m_pool);
     }
 
     if (m_nr)
@@ -754,6 +760,11 @@ void FrameEncoder::compressFrame(int layer)
         }
     }
 
+    /* In single SEI NAL mode the SEI messages of this access unit are collected in m_bs, which still holds the
+     * previous picture's slice header unless the AUD or the repeated stream headers above have reset it */
+    if (m_param->bSingleSeiNal && !(m_frame[layer]->m_lowres.bKeyframe && m_param->bRepeatHeaders))
+        m_bs.resetBits();
+
     m_rce.encodeOrder = m_frame[layer]->m_encodeOrder;
     int prevBPSEI = m_rce.encodeOrder ? m_top->m_lastBPSEI : 0;
 
@@ -798,19 +809,18 @@ void FrameEncoder::compressFrame(int layer)
         {
             if (m_param->interlaceMode > 0)
             {
+                // field_seq_flag is 1, so each picture is a single field: 1 = top field, 2 = bottom field
                 if( m_param->interlaceMode == 2 )
-                {   
-                    // m_picStruct should be set to 3 or 4 when field feature is enabled
+                {
                     if (m_param->bField)
-                        // 3: Top field, bottom field, in that order; 4: Bottom field, top field, in that order
-                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 4 : 3;
+                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 2 /* bottom */ : 1 /* top */;
                     else
                         sei->m_picStruct = (poc & 1) ? 1 /* top */ : 2 /* bottom */;
                 }     
                 else if (m_param->interlaceMode == 1)
                 {
                     if (m_param->bField)
-                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 3: 4;
+                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 1 /* top */ : 2 /* bottom */;
                     else
                         sei->m_picStruct = (poc & 1) ? 2 /* bottom */ : 1 /* top */;
                 }
@@ -915,7 +925,7 @@ void FrameEncoder::compressFrame(int layer)
      * compressed in a wave-front pattern if WPP is enabled. Row based loop
      * filters runs behind the CTU compression and reconstruction */
 
-    for (uint32_t sliceId = 0; sliceId < m_param->maxSlices; sliceId++)    
+    for (uint32_t sliceId = 0; sliceId < m_param->maxSlices; sliceId++)
         m_rows[m_sliceBaseRow[sliceId]].active = true;
     
     if (m_param->bEnableWavefront)
@@ -975,8 +985,16 @@ void FrameEncoder::compressFrame(int layer)
                             m_mref[l][ref].applyWeight(rowIdx, m_numRows, sliceEndRow, sliceId);
                     }
                 }
-
+                
                 enableRowEncoder(m_row_to_idx[row]); /* clear external dependency for this row */
+
+                if (m_top->m_threadedME && !slice->isIntra())
+                {
+                    ScopedLock lock(m_tmeDepLock);
+                    m_tmeDeps[row].external = true;
+                    m_top->m_threadedME->enqueueReadyRows(row, layer, this);
+                }
+
                 if (!rowInSlice)
                 {
                     m_row0WaitTime[layer] = x265_mdate();
@@ -1022,6 +1040,13 @@ void FrameEncoder::compressFrame(int layer)
                     }
                 }
 
+                if (m_top->m_threadedME && !slice->isIntra())
+                {
+                    ScopedLock lock(m_tmeDepLock);
+                    m_tmeDeps[i].external = true;
+                    m_top->m_threadedME->enqueueReadyRows(i, layer, this);
+                }
+
                 if (!i)
                     m_row0WaitTime[layer] = x265_mdate();
                 else if (i == m_numRows - 1)
@@ -1037,6 +1062,11 @@ void FrameEncoder::compressFrame(int layer)
 #if ENABLE_LIBVMAF
     vmafFrameLevelScore();
 #endif
+
+    m_tmeDepLock.acquire();
+    m_tmeDeps.clear();
+    m_tmeDeps.resize(m_numRows);
+    m_tmeDepLock.release();
 
     if (m_param->maxSlices > 1)
     {
@@ -1463,14 +1493,16 @@ void FrameEncoder::encodeSlice(uint32_t sliceAddr, int layer)
 void FrameEncoder::processRow(int row, int threadId, int layer)
 {
     int64_t startTime = x265_mdate();
-    if (ATOMIC_INC(&m_activeWorkerCount) == 1 && m_stallStartTime[layer])
-        m_totalNoWorkerTime[layer] += x265_mdate() - m_stallStartTime[layer];
+    if (++m_activeWorkerCount == 1 && m_stallStartTime[layer])
+        m_totalNoWorkerTime[layer].add(x265_mdate() - m_stallStartTime[layer]);
 
     const uint32_t realRow = m_idx_to_row[row >> 1];
     const uint32_t typeNum = m_idx_to_row[row & 1];
 
     if (!typeNum)
+    {
         processRowEncoder(realRow, m_tld[threadId], layer);
+    }
     else
     {
         m_frameFilter.processRow(realRow, layer);
@@ -1480,10 +1512,10 @@ void FrameEncoder::processRow(int row, int threadId, int layer)
             enqueueRowFilter(m_row_to_idx[realRow + 1]);
     }
 
-    if (ATOMIC_DEC(&m_activeWorkerCount) == 0)
+    if (--m_activeWorkerCount == 0)
         m_stallStartTime[layer] = x265_mdate();
 
-    m_totalWorkerElapsedTime[layer] += x265_mdate() - startTime; // not thread safe, but good enough
+    m_totalWorkerElapsedTime[layer].add(x265_mdate() - startTime);
 }
 
 // Called by worker threads
@@ -1600,6 +1632,12 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
     if (tld.analysis.m_sliceMaxY < tld.analysis.m_sliceMinY)
         tld.analysis.m_sliceMaxY = tld.analysis.m_sliceMinY = 0;
 
+    if (m_top->m_threadedME && !slice->isIntra())
+    {
+        ScopedLock lock(m_tmeDepLock);
+        m_tmeDeps[row].internal = true;
+        m_top->m_threadedME->enqueueReadyRows(row, layer, this);
+    }
 
     while (curRow.completed < numCols)
     {
@@ -1609,6 +1647,29 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
         const uint32_t cuAddr = lineStartCUAddr + col;
         CUData* ctu = curEncData.getPicCTU(cuAddr);
         const uint32_t bLastCuInSlice = (bLastRowInSlice & (col == numCols - 1)) ? 1 : 0;
+
+        /* Must wait for TME to finish before initCTU because both threads
+         * operate on the same CUData — the encoder's initCTU would corrupt
+         * data that deriveMVsForCTU is still reading. */
+        if (m_top->m_threadedME && slice->m_sliceType != I_SLICE)
+        {
+            int64_t waitStart = x265_mdate();
+            bool waited = false;
+
+            while (m_frame[layer]->m_ctuMEFlags[cuAddr].get() == 0)
+            {
+#ifdef DETAILED_CU_STATS
+                tld.analysis.m_stats[m_jpId].countTmeBlockedCTUs++;
+#endif
+                m_frame[layer]->m_ctuMEFlags[cuAddr].waitForChange(0);
+                waited = true;
+            }
+
+            int64_t waitEnd = x265_mdate();
+            if (waited)
+                ATOMIC_ADD(&m_totalThreadedMEWait[layer], waitEnd - waitStart);
+        }
+
         ctu->initCTU(*m_frame[layer], cuAddr, slice->m_sliceQp, bFirstRowInSlice, bLastRowInSlice, bLastCuInSlice);
 
         if (!layer && bIsVbv)
@@ -1675,7 +1736,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
             collectDynDataRow(*ctu, &curRow.rowStats);
 
         // take a sample of the current active worker count
-        ATOMIC_ADD(&m_totalActiveWorkerCount, m_activeWorkerCount);
+        m_totalActiveWorkerCount.fetchAdd(m_activeWorkerCount);
         ATOMIC_INC(&m_activeWorkerCountSamples);
 
         /* advance top-level row coder to include the context of this CTU.
@@ -1785,9 +1846,9 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
             FrameData::RCStatCU& cuStat = curEncData.m_cuStat[cuAddr];    
             if ((m_param->bEnableWavefront && ((cuAddr == m_sliceBaseRow[sliceId] * numCols) || !m_param->rc.bEnableConstVbv)) || !m_param->bEnableWavefront)
             {
-                curEncData.m_rowStat[row].rowSatd += cuStat.vbvCost;
-                curEncData.m_rowStat[row].rowIntraSatd += cuStat.intraVbvCost;
-                curEncData.m_rowStat[row].encodedBits += cuStat.totalBits;
+                curEncData.m_rowStat[row].rowSatd.fetchAdd(cuStat.vbvCost);
+                curEncData.m_rowStat[row].rowIntraSatd.fetchAdd(cuStat.intraVbvCost);
+                curEncData.m_rowStat[row].encodedBits.fetchAdd(cuStat.totalBits);
                 curEncData.m_rowStat[row].sumQpRc += cuStat.baseQp;
                 curEncData.m_rowStat[row].numEncodedCUs = cuAddr;
             }
@@ -1833,9 +1894,9 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
                     {
                         for (uint32_t c = startCuAddr; c <= EndCuAddr && c <= numCols * (r + 1) - 1; c++)
                         {
-                            curEncData.m_rowStat[r].rowSatd += curEncData.m_cuStat[c].vbvCost;
-                            curEncData.m_rowStat[r].rowIntraSatd += curEncData.m_cuStat[c].intraVbvCost;
-                            curEncData.m_rowStat[r].encodedBits += curEncData.m_cuStat[c].totalBits;
+                            curEncData.m_rowStat[r].rowSatd.fetchAdd(curEncData.m_cuStat[c].vbvCost);
+                            curEncData.m_rowStat[r].rowIntraSatd.fetchAdd(curEncData.m_cuStat[c].intraVbvCost);
+                            curEncData.m_rowStat[r].encodedBits.fetchAdd(curEncData.m_cuStat[c].totalBits);
                             curEncData.m_rowStat[r].sumQpRc += curEncData.m_cuStat[c].baseQp;
                             curEncData.m_rowStat[r].numEncodedCUs = c;
                         }
@@ -1850,7 +1911,6 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
                 qpBase = x265_clip3((double)m_param->rc.qpMin, (double)m_param->rc.qpMax, qpBase);
                 curEncData.m_rowStat[row].rowQp = qpBase;
                 curEncData.m_rowStat[row].rowQpScale = x265_qp2qScale(qpBase);
-
                 if (curRow.reEncode < 0)
                 {
                     x265_log(m_param, X265_LOG_DEBUG, "POC %d row %d - encode restart required for VBV, to %.2f from %.2f\n",
@@ -1948,9 +2008,9 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
             {
                 for (uint32_t c = curEncData.m_rowStat[r].numEncodedCUs + 1; c < numCols * (r + 1); c++)
                 {
-                    curEncData.m_rowStat[r].rowSatd += curEncData.m_cuStat[c].vbvCost;
-                    curEncData.m_rowStat[r].rowIntraSatd += curEncData.m_cuStat[c].intraVbvCost;
-                    curEncData.m_rowStat[r].encodedBits += curEncData.m_cuStat[c].totalBits;
+                    curEncData.m_rowStat[r].rowSatd.fetchAdd(curEncData.m_cuStat[c].vbvCost);
+                    curEncData.m_rowStat[r].rowIntraSatd.fetchAdd(curEncData.m_cuStat[c].intraVbvCost);
+                    curEncData.m_rowStat[r].encodedBits.fetchAdd(curEncData.m_cuStat[c].totalBits);
                     curEncData.m_rowStat[r].sumQpRc += curEncData.m_cuStat[c].baseQp;
                     curEncData.m_rowStat[r].numEncodedCUs = c;
                 }
@@ -2324,88 +2384,179 @@ void FrameEncoder::readModel(FilmGrainCharacteristics* m_filmGrain, FILE* filmgr
     }
 }
 
+void compute_film_grain_resolution(int width, int height,
+                                   int& apply_units_resolution_log2,
+                                   int& apply_horz_resolution,
+                                   int& apply_vert_resolution)
+{
+    unsigned long log2_width, log2_height;
+    BSF(log2_width, (unsigned long) width);
+    BSF(log2_height, (unsigned long) height);
+
+    int log2 = (log2_width < log2_height) ? log2_width : log2_height;
+    apply_units_resolution_log2 = log2;
+
+    int unit = 1 << log2;
+    apply_horz_resolution = width / unit;
+    apply_vert_resolution = height / unit;
+
+    return;
+}
+
 void FrameEncoder::readAomModel(AomFilmGrainCharacteristics* m_aomFilmGrain, FILE* Aomfilmgrain)
 {
     char const* errorMessage = "Error reading Aom FilmGrain characteristics\n";
     AomFilmGrain m_afg;
     m_afg.m_chroma_scaling_from_luma = 0;
+    int bitCount = 0;
+    bitCount += 4; // payload_less_than_4byte_flag(1) + film_grain_param_set_idx(3)
     x265_fread((char*)&m_aomFilmGrain->m_apply_grain, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount++;
     x265_fread((char*)&m_aomFilmGrain->m_grain_seed, sizeof(uint16_t), 1, Aomfilmgrain, errorMessage);
+    bitCount+=16;
     x265_fread((char*)&m_aomFilmGrain->m_update_grain, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount++;
     x265_fread((char*)&m_aomFilmGrain->m_num_y_points, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount+=4;
+
     if (m_aomFilmGrain->m_num_y_points)
     {
+        m_aomFilmGrain->point_y_value_increment_bits = 8;
+        bitCount += 3;
+        m_aomFilmGrain->point_y_scaling_bits = 8;
+        bitCount += 2;
         for (int i = 0; i < m_aomFilmGrain->m_num_y_points; i++)
         {
             for (int j = 0; j < 2; j++)
             {
                 x265_fread((char*)&m_aomFilmGrain->m_scaling_points_y[i][j], sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+                bitCount+=8;
             }
         }
     }
     x265_fread((char*)&m_aomFilmGrain->m_num_cb_points, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount+=4;
     if (m_aomFilmGrain->m_num_cb_points)
     {
+        m_aomFilmGrain->point_cb_value_increment_bits = 8;
+        bitCount += 3;
+        m_aomFilmGrain->point_cb_scaling_bits = 8;
+        bitCount += 2;
+        m_aomFilmGrain->cb_scaling_offset = 0;
+        bitCount += 8;
         for (int i = 0; i < m_aomFilmGrain->m_num_cb_points; i++)
         {
             for (int j = 0; j < 2; j++)
             {
                 x265_fread((char*)&m_aomFilmGrain->m_scaling_points_cb[i][j], sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+                bitCount+=8;
             }
         }
     }
     x265_fread((char*)&m_aomFilmGrain->m_num_cr_points, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount+=4;
     if (m_aomFilmGrain->m_num_cr_points)
     {
+        m_aomFilmGrain->point_cr_value_increment_bits = 8;
+        bitCount += 3;
+        m_aomFilmGrain->point_cr_scaling_bits = 8;
+        bitCount += 2;
+        m_aomFilmGrain->cr_scaling_offset = 0;
+        bitCount += 8;
         for (int i = 0; i < m_aomFilmGrain->m_num_cr_points; i++)
         {
             for (int j = 0; j < 2; j++)
             {
                 x265_fread((char*)&m_aomFilmGrain->m_scaling_points_cr[i][j], sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+                bitCount+=8;
             }
         }
     }
     x265_fread((char*)&m_aomFilmGrain->m_scaling_shift, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount+=2;
     x265_fread((char*)&m_aomFilmGrain->m_ar_coeff_lag, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount+=2;
     if (m_aomFilmGrain->m_num_y_points)
     {
-
+        bitCount += 2;
         for (int i = 0; i < 24; i++)
         {
             x265_fread((char*)&m_aomFilmGrain->m_ar_coeffs_y[i], sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+            bitCount+=8;
         }
     }
     if (m_aomFilmGrain->m_num_cb_points || m_afg.m_chroma_scaling_from_luma)
     {
+        bitCount += 2;
         for (int i = 0; i < 25; i++)
         {
             x265_fread((char*)&m_aomFilmGrain->m_ar_coeffs_cb[i], sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+            bitCount+=8;
         }
     }
     if (m_aomFilmGrain->m_num_cr_points || m_afg.m_chroma_scaling_from_luma)
     {
-
+        bitCount += 2;
         for (int i = 0; i < 25; i++)
         {
             x265_fread((char*)&m_aomFilmGrain->m_ar_coeffs_cr[i], sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+            bitCount+=8;
         }
     }
     x265_fread((char*)&m_aomFilmGrain->m_ar_coeff_shift, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount+=2;
     x265_fread((char*)&m_aomFilmGrain->m_grain_scale_shift, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount+=2;
     if (m_aomFilmGrain->m_num_cb_points)
     {
         x265_fread((char*)&m_aomFilmGrain->m_cb_mult, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+        bitCount += 8;
         x265_fread((char*)&m_aomFilmGrain->m_cb_luma_mult, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+        bitCount += 8;
         x265_fread((char*)&m_aomFilmGrain->m_cb_offset, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+        bitCount += 9;
     }
     if (m_aomFilmGrain->m_num_cr_points)
     {
         x265_fread((char*)&m_aomFilmGrain->m_cr_mult, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+        bitCount += 8;
         x265_fread((char*)&m_aomFilmGrain->m_cr_luma_mult, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+        bitCount += 8;
         x265_fread((char*)&m_aomFilmGrain->m_cr_offset, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+        bitCount += 9;
     }
     x265_fread((char*)&m_aomFilmGrain->m_overlap_flag, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount++;
     x265_fread((char*)&m_aomFilmGrain->m_clip_to_restricted_range, sizeof(int32_t), 1, Aomfilmgrain, errorMessage);
+    bitCount++;
+
+    m_aomFilmGrain->luma_only_flag = m_aomFilmGrain->m_num_cb_points == 0 && m_aomFilmGrain->m_num_cr_points == 0;
+    bitCount++;
+    m_aomFilmGrain->subsamplingX = CHROMA_H_SHIFT(m_param->internalCsp);
+    m_aomFilmGrain->subsamplingY = CHROMA_V_SHIFT(m_param->internalCsp);
+    if (!m_aomFilmGrain->luma_only_flag)
+        bitCount += 2; // subsampling_x(1) + subsampling_y(1)
+    compute_film_grain_resolution(m_param->sourceWidth, m_param->sourceHeight, m_aomFilmGrain->units_resolution_log2,
+        m_aomFilmGrain->horz_resolution, m_aomFilmGrain->vert_resolution);
+    bitCount += 28; // apply_units_resolution_log2(4) + apply_horz_resolution(12) + apply_vert_resolution(12)
+    m_aomFilmGrain->predict_scaling_flag = 0;
+    bitCount++;
+    m_aomFilmGrain->predict_y_scaling_flag = 0;
+    m_aomFilmGrain->predict_cb_scaling_flag = 0;
+    m_aomFilmGrain->predict_cr_scaling_flag = 0;
+    m_aomFilmGrain->m_bitDepth = m_param->internalBitDepth;
+    bitCount++; // videosingnaltypepresentflag
+    if (m_frame[0]->m_encData->m_slice->m_sps->vuiParameters.videoSignalTypePresentFlag) bitCount += 4; // bit_depth_minus8(3) + cicp_info_present_flag(1)
+    if (m_frame[0]->m_encData->m_slice->m_sps->vuiParameters.colourDescriptionPresentFlag) bitCount += 25; // colourPrimaries(8) + transferCharacteristics(8) + matrixCoefficients(8)+ videoFullRangeFlag(1)
+    if (!m_aomFilmGrain->luma_only_flag) {
+        m_aomFilmGrain->m_chroma_scaling_from_luma = 0;
+        bitCount++;
+    }
+
+    m_aomFilmGrain->payload_size = (bitCount + 8 - 1) / 8;
+    m_aomFilmGrain->payload_bits = m_aomFilmGrain->payload_size < 4 ? 2 : 8;
+    bitCount += m_aomFilmGrain->payload_bits;
+    m_aomFilmGrain->payload_size = (bitCount + 8 - 1) / 8;
 }
 
 #if ENABLE_LIBVMAF
@@ -2435,7 +2586,7 @@ void FrameEncoder::vmafFrameLevelScore()
 
 Frame** FrameEncoder::getEncodedPicture(NALList& output)
 {
-    if (m_frame[0] && (m_param->numLayers <= 1 || m_frame[1]))
+    if (m_frame[0] && (m_param->numLayers <= 1 || (MAX_LAYERS > 1 && m_frame[1])))
     {
         /* block here until worker thread completes */
         m_done.wait();

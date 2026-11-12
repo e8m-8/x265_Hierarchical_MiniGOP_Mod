@@ -27,22 +27,32 @@
 #include "threading.h"
 
 #include <new>
+#include <vector>
 
 #if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7
 #include <winnt.h>
 #endif
 
-#if X86_64
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#elif !defined(_WIN32)
+#include <fstream>
+#include <string>
+#include <cstdio>
+#include <cstdlib>
+#endif
+
+#if X86_64 || X265_ARCH_ARM64
 
 #ifdef __GNUC__
 
-#define SLEEPBITMAP_CTZ(id, x)     id = (unsigned long)__builtin_ctzll(x)
+#define SLEEPBITMAP_BSF(id, x)     (id) = ((unsigned long)__builtin_ctzll(x))
 #define SLEEPBITMAP_OR(ptr, mask)  __sync_fetch_and_or(ptr, mask)
 #define SLEEPBITMAP_AND(ptr, mask) __sync_fetch_and_and(ptr, mask)
 
 #elif defined(_MSC_VER)
 
-#define SLEEPBITMAP_CTZ(id, x)     _BitScanForward64(&id, x)
+#define SLEEPBITMAP_BSF(id, x)     _BitScanForward64(&id, x)
 #define SLEEPBITMAP_OR(ptr, mask)  InterlockedOr64((volatile LONG64*)ptr, (LONG)mask)
 #define SLEEPBITMAP_AND(ptr, mask) InterlockedAnd64((volatile LONG64*)ptr, (LONG)mask)
 
@@ -51,7 +61,7 @@
 #else
 
 /* use 32-bit primitives defined in threading.h */
-#define SLEEPBITMAP_CTZ CTZ
+#define SLEEPBITMAP_BSF BSF
 #define SLEEPBITMAP_OR  ATOMIC_OR
 #define SLEEPBITMAP_AND ATOMIC_AND
 
@@ -148,12 +158,12 @@ void WorkerThread::threadMain()
             /* if the current job provider still wants help, only switch to a
              * higher priority provider (lower slice type). Else take the first
              * available job provider with the highest priority */
-            int curPriority = (m_curJobProvider->m_helpWanted) ? m_curJobProvider->m_sliceType :
+            int curPriority = (bool)m_curJobProvider->m_helpWanted ? m_curJobProvider->m_sliceType :
                                                                  INVALID_SLICE_PRIORITY + 1;
             int nextProvider = -1;
             for (int i = 0; i < m_pool.m_numProviders; i++)
             {
-                if (m_pool.m_jpTable[i]->m_helpWanted &&
+                if ((bool)m_pool.m_jpTable[i]->m_helpWanted &&
                     m_pool.m_jpTable[i]->m_sliceType < curPriority)
                 {
                     nextProvider = i;
@@ -179,13 +189,13 @@ void WorkerThread::threadMain()
     SLEEPBITMAP_OR(&m_pool.m_sleepBitmap, idBit);
 }
 
-void JobProvider::tryWakeOne()
+bool JobProvider::tryWakeOne()
 {
-    int id = m_pool->tryAcquireSleepingThread(m_ownerBitmap, ALL_POOL_THREADS);
+    int id = m_pool->tryAcquireSleepingThread(SLEEPBITMAP_LOAD(&m_ownerBitmap), ALL_POOL_THREADS);
     if (id < 0)
     {
         m_helpWanted = true;
-        return;
+        return false;
     }
 
     WorkerThread& worker = m_pool->m_workers[id];
@@ -197,34 +207,35 @@ void JobProvider::tryWakeOne()
         SLEEPBITMAP_OR(&worker.m_curJobProvider->m_ownerBitmap, bit);
     }
     worker.awaken();
+    return true;
 }
 
 int ThreadPool::tryAcquireSleepingThread(sleepbitmap_t firstTryBitmap, sleepbitmap_t secondTryBitmap)
 {
     unsigned long id;
 
-    sleepbitmap_t masked = m_sleepBitmap & firstTryBitmap;
+    sleepbitmap_t masked = SLEEPBITMAP_LOAD(&m_sleepBitmap) & firstTryBitmap;
     while (masked)
     {
-        SLEEPBITMAP_CTZ(id, masked);
+        SLEEPBITMAP_BSF(id, masked);
 
         sleepbitmap_t bit = (sleepbitmap_t)1 << id;
         if (SLEEPBITMAP_AND(&m_sleepBitmap, ~bit) & bit)
             return (int)id;
 
-        masked = m_sleepBitmap & firstTryBitmap;
+        masked = SLEEPBITMAP_LOAD(&m_sleepBitmap) & firstTryBitmap;
     }
 
-    masked = m_sleepBitmap & secondTryBitmap;
+    masked = SLEEPBITMAP_LOAD(&m_sleepBitmap) & secondTryBitmap;
     while (masked)
     {
-        SLEEPBITMAP_CTZ(id, masked);
+        SLEEPBITMAP_BSF(id, masked);
 
         sleepbitmap_t bit = (sleepbitmap_t)1 << id;
         if (SLEEPBITMAP_AND(&m_sleepBitmap, ~bit) & bit)
             return (int)id;
 
-        masked = m_sleepBitmap & secondTryBitmap;
+        masked = SLEEPBITMAP_LOAD(&m_sleepBitmap) & secondTryBitmap;
     }
 
     return -1;
@@ -247,9 +258,121 @@ int ThreadPool::tryBondPeers(int maxPeers, sleepbitmap_t peerBitmap, BondedTaskG
 
     return bondCount;
 }
-ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isThreadsReserved)
+/* Computes the number of physical pools to create so that each pool has at
+ * most MAX_POOL_THREADS threads, matching the bit length of the masks used
+ * for thread pool bookkeeping. */
+static int getPhysicalPoolCount(int threads)
 {
-    enum { MAX_NODE_NUM = 127 };
+    if (threads <= 0)
+    {
+        return 0;
+    }
+    return (threads + MAX_POOL_THREADS - 1) / MAX_POOL_THREADS;
+}
+
+/* Distributes totalNumThreads between ThreadedME and FrameEncoder pools.
+ * Reorders the resource groups with all ThreadedME groups first and reports
+ * both logical group and physical pool counts. */
+static void distributeThreadsForTme(
+    x265_param* p,
+    int totalNumThreads,
+    int& numPoolGroups,
+    int poolGroupCapacity,
+    int* threadsPerPool,
+    uint64_t* nodeMaskPerPool,
+    int& numPools,
+    int& numTmePools,
+    int& numTmePoolGroups,
+    int& threadsFrameEnc)
+{
+    if (totalNumThreads < MIN_TME_THREADS)
+    {
+        x265_log(p, X265_LOG_WARNING, "Low thread count detected, disabling --threaded-me."
+            " Minimum recommended is 32 cores / threads\n");
+        p->bThreadedME = 0;
+        p->tmeNumThreads = 0;
+        numTmePools = 0;
+        numTmePoolGroups = 0;
+        return;
+    }
+
+    int requestedTME = ThreadPool::configureTmeThreadCount(p, totalNumThreads);
+    int targetTME = (requestedTME < 1) ? 1 : requestedTME;
+
+    threadsFrameEnc = totalNumThreads - targetTME;
+    int defaultNumFT = ThreadPool::getFrameThreadsCount(p, totalNumThreads);
+    if (threadsFrameEnc < defaultNumFT)
+    {
+        threadsFrameEnc = defaultNumFT;
+        targetTME = totalNumThreads - threadsFrameEnc;
+    }
+    p->tmeNumThreads = targetTME;
+
+    std::vector<int> tmeThreads;
+    std::vector<uint64_t> tmeMasks;
+    std::vector<int> frameThreads;
+    std::vector<uint64_t> frameMasks;
+    int remainingTME = targetTME;
+
+    for (int i = 0; i < numPoolGroups; i++)
+    {
+        if (!threadsPerPool[i])
+            continue;
+
+        int toTME = X265_MIN(threadsPerPool[i], remainingTME);
+        if (toTME)
+        {
+            tmeThreads.push_back(toTME);
+            tmeMasks.push_back(nodeMaskPerPool[i]);
+            remainingTME -= toTME;
+        }
+
+        int toFrame = threadsPerPool[i] - toTME;
+        if (toFrame)
+        {
+            frameThreads.push_back(toFrame);
+            frameMasks.push_back(nodeMaskPerPool[i]);
+        }
+    }
+
+    /* If no resource groups were detected, use the auto-detected total. */
+    if (remainingTME)
+    {
+        tmeThreads.push_back(remainingTME);
+        tmeMasks.push_back(1);
+        frameThreads.push_back(threadsFrameEnc);
+        frameMasks.push_back(1);
+    }
+
+    memset(threadsPerPool, 0, sizeof(int) * poolGroupCapacity);
+    memset(nodeMaskPerPool, 0, sizeof(uint64_t) * poolGroupCapacity);
+
+    numPools = 0;
+    numTmePools = 0;
+    numTmePoolGroups = static_cast<int>(tmeThreads.size());
+    int group = 0;
+    for (size_t i = 0; i < tmeThreads.size(); i++, group++)
+    {
+        X265_CHECK(group < poolGroupCapacity, "ThreadedME pool plan exceeded resource-group capacity\n");
+        threadsPerPool[group] = tmeThreads[i];
+        nodeMaskPerPool[group] = tmeMasks[i];
+        int physicalPools = getPhysicalPoolCount(tmeThreads[i]);
+        numPools += physicalPools;
+        numTmePools += physicalPools;
+    }
+    for (size_t i = 0; i < frameThreads.size(); i++, group++)
+    {
+        X265_CHECK(group < poolGroupCapacity, "ThreadedME pool plan exceeded resource-group capacity\n");
+        threadsPerPool[group] = frameThreads[i];
+        nodeMaskPerPool[group] = frameMasks[i];
+        numPools += getPhysicalPoolCount(frameThreads[i]);
+    }
+    numPoolGroups = group;
+}
+
+ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, int& numTmePools, bool isThreadsReserved)
+{
+    enum { MAX_NODE_NUM = 64 };
     int cpusPerNode[MAX_NODE_NUM + 1];
     int threadsPerPool[MAX_NODE_NUM + 2];
     uint64_t nodeMaskPerPool[MAX_NODE_NUM + 2];
@@ -259,8 +382,12 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isTh
     memset(threadsPerPool, 0, sizeof(threadsPerPool));
     memset(nodeMaskPerPool, 0, sizeof(nodeMaskPerPool));
 
-    int numNumaNodes = X265_MIN(getNumaNodeCount(), MAX_NODE_NUM);
+    int detectedNumaNodes = getNumaNodeCount();
+    int numNumaNodes = X265_MIN(detectedNumaNodes, MAX_NODE_NUM);
+    if (detectedNumaNodes > MAX_NODE_NUM)
+        x265_log(p, X265_LOG_WARNING, "Only the first %d NUMA nodes can be represented by thread-pool masks\n", MAX_NODE_NUM);
     bool bNumaSupport = false;
+    numTmePools = 0;
 
 #if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 
     bNumaSupport = true;
@@ -301,13 +428,13 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isTh
     /* limit threads based on param->numaPools
      * For windows because threads can't be allocated to live across sockets
      * changing the default behavior to be per-socket pools -- FIXME */
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 || HAVE_LIBNUMA
+#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7
     if (!strlen(p->numaPools) || (strcmp(p->numaPools, "NULL") == 0 || strcmp(p->numaPools, "*") == 0 || strcmp(p->numaPools, "") == 0))
     {
-         char poolString[50] = "";
+         char poolString[MAX_NODE_NUM * 12 + 1] = "";
          for (int i = 0; i < numNumaNodes; i++)
          {
-             char nextCount[10] = "";
+             char nextCount[12] = "";
              if (i)
                  snprintf(nextCount, sizeof(nextCount), ",%d", cpusPerNode[i]);
              else
@@ -373,9 +500,32 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isTh
             nodeMaskPerPool[numNumaNodes] |= ((uint64_t)1 << i);
         }
     }
+
+    /* If ThreadedME is enabled, split resources: give half NUMA nodes (or
+     * half cores when NUMA not available) to threaded-me and the other half
+     * to the remaining job providers. */
+    /* Compute total CPU count from detected per-node counts when available */
+    for (int i = 0; i < numNumaNodes + 1; i++)
+        totalNumThreads += threadsPerPool[i];
+    if (!totalNumThreads)
+    {
+        totalNumThreads = ThreadPool::getCpuCount();
+        threadsPerPool[0] = totalNumThreads;
+        nodeMaskPerPool[0] = 1;
+    }
+
+    int threadsFrameEnc = totalNumThreads;
+    int numPoolGroups = numNumaNodes + 1;
+    int numTmePoolGroups = 0;
+    if (p->bThreadedME && !isThreadsReserved)
+    {
+        distributeThreadsForTme(p, totalNumThreads, numPoolGroups, MAX_NODE_NUM + 2, threadsPerPool,
+                                nodeMaskPerPool, numPools, numTmePools,
+                                numTmePoolGroups, threadsFrameEnc);
+    }
  
     // If the last pool size is > MAX_POOL_THREADS, clip it to spawn thread pools only of size >= 1/2 max (heuristic)
-    if ((threadsPerPool[numNumaNodes] > MAX_POOL_THREADS) &&
+    if (!p->bThreadedME && (threadsPerPool[numNumaNodes] > MAX_POOL_THREADS) &&
         ((threadsPerPool[numNumaNodes] % MAX_POOL_THREADS) < (MAX_POOL_THREADS / 2)))
     {
         threadsPerPool[numNumaNodes] -= (threadsPerPool[numNumaNodes] % MAX_POOL_THREADS);
@@ -383,17 +533,22 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isTh
                  "Creating only %d worker threads beyond specified numbers with --pools (if specified) to prevent asymmetry in pools; may not use all HW contexts\n", threadsPerPool[numNumaNodes]);
     }
 
-    numPools = 0;
-    for (int i = 0; i < numNumaNodes + 1; i++)
+    if (!p->bThreadedME)
     {
-        if (bNumaSupport)
-            x265_log(p, X265_LOG_DEBUG, "NUMA node %d may use %d logical cores\n", i, cpusPerNode[i]);
-        if (threadsPerPool[i])
+        numPools = 0;
+        for (int i = 0; i < numNumaNodes + 1; i++)
         {
-            numPools += (threadsPerPool[i] + MAX_POOL_THREADS - 1) / MAX_POOL_THREADS;
-            totalNumThreads += threadsPerPool[i];
+            if (bNumaSupport)
+                x265_log(p, X265_LOG_DEBUG, "NUMA node %d may use %d logical cores\n", i, cpusPerNode[i]);
+            
+            if (threadsPerPool[i])
+            {
+                numPools += getPhysicalPoolCount(threadsPerPool[i]);
+                totalNumThreads += threadsPerPool[i];
+            }
         }
     }
+        
     if (!isThreadsReserved)
     {
         if (!numPools)
@@ -403,46 +558,89 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isTh
         }
 
         if (!p->frameNumThreads)
-            ThreadPool::getFrameThreadsCount(p, totalNumThreads);
+            p->frameNumThreads = ThreadPool::getFrameThreadsCount(p, threadsFrameEnc);
     }
     
     if (!numPools)
         return NULL;
 
-    if (numPools > p->frameNumThreads)
+    if (numPools > p->frameNumThreads && !p->bThreadedME)
     {
         x265_log(p, X265_LOG_DEBUG, "Reducing number of thread pools for frame thread count\n");
         numPools = X265_MAX(p->frameNumThreads / 2, 1);
     }
     if (isThreadsReserved)
+    {
         numPools = 1;
+        numTmePools = 0;
+    }
+    else if (p->bThreadedME)
+    {
+        int framePoolCount = numPools - numTmePools;
+        if (framePoolCount > p->frameNumThreads)
+        {
+            int retainedThreads = 0;
+            int retainedPools = 0;
+            for (int group = numTmePoolGroups; group < numPoolGroups && retainedPools < p->frameNumThreads; group++)
+            {
+                int remaining = threadsPerPool[group];
+                while (remaining && retainedPools < p->frameNumThreads)
+                {
+                    retainedThreads += X265_MIN(remaining, MAX_POOL_THREADS);
+                    remaining -= X265_MIN(remaining, MAX_POOL_THREADS);
+                    retainedPools++;
+                }
+            }
+            x265_log(p, X265_LOG_WARNING,
+                     "ThreadedME frame pools limited by frame threads; %d frame worker threads will not be used\n",
+                     threadsFrameEnc - retainedThreads);
+            numPools = numTmePools + p->frameNumThreads;
+        }
+    }
     ThreadPool *pools = new ThreadPool[numPools];
     if (pools)
     {
-        int maxProviders = (p->frameNumThreads + numPools - 1) / numPools + !isThreadsReserved; /* +1 is Lookahead, always assigned to threadpool 0 */
+        int poolCount = numPools - numTmePools;
         int node = 0;
         for (int i = 0; i < numPools; i++)
         {
-            while (!threadsPerPool[node])
+            int maxProviders = (i < numTmePools)
+                ? 1
+                : (p->frameNumThreads + poolCount - 1) / poolCount + !isThreadsReserved; // +1 is Lookahead, always assigned to threadpool 0
+            
+            while (node < numPoolGroups && !threadsPerPool[node])
                 node++;
-            int numThreads = X265_MIN(MAX_POOL_THREADS, threadsPerPool[node]);
+            if (node == numPoolGroups)
+            {
+                x265_log(p, X265_LOG_ERROR, "Thread-pool plan contains fewer resources than physical pools\n");
+                delete[] pools;
+                numPools = 0;
+                numTmePools = 0;
+                return NULL;
+            }
+            // Consume a block no larger than MAX_POOL_THREADS when creating a physical pool.
+            int numThreads = X265_MIN(threadsPerPool[node], MAX_POOL_THREADS);
             int origNumThreads = numThreads;
-            if (i == 0 && p->lookaheadThreads > numThreads / 2)
+
+            int firstFramePool = numTmePools;
+            if (i == firstFramePool && p->lookaheadThreads > numThreads / 2)
             {
                 p->lookaheadThreads = numThreads / 2;
                 x265_log(p, X265_LOG_DEBUG, "Setting lookahead threads to a maximum of half the total number of threads\n");
             }
+
             if (isThreadsReserved)
             {
                 numThreads = p->lookaheadThreads;
                 maxProviders = 1;
             }
-
-            else if (i == 0)
+            else if (i == firstFramePool)
                 numThreads -= p->lookaheadThreads;
+
+            X265_CHECK(numThreads <= MAX_POOL_THREADS, "a single thread pool cannot have more than MAX_POOL_THREADS threads\n");
             if (!pools[i].create(numThreads, maxProviders, nodeMaskPerPool[node]))
             {
-                X265_FREE(pools);
+                delete[] pools;
                 numPools = 0;
                 return NULL;
             }
@@ -468,16 +666,14 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isTh
 
 ThreadPool::ThreadPool()
 {
-    memset(this, 0, sizeof(*this));
+    memset(static_cast<void*>(this), 0, sizeof(*this));
 }
 
 bool ThreadPool::create(int numThreads, int maxProviders, uint64_t nodeMask)
 {
-    X265_CHECK(numThreads <= MAX_POOL_THREADS, "a single thread pool cannot have more than MAX_POOL_THREADS threads\n");
-
 #if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 
     memset(&m_groupAffinity, 0, sizeof(GROUP_AFFINITY));
-    for (int i = 0; i < getNumaNodeCount(); i++)
+    for (int i = 0; i < X265_MIN(getNumaNodeCount(), 64); i++)
     {
         int numaNode = ((nodeMask >> i) & 0x1U) ? i : -1;
         if (numaNode != -1)
@@ -510,6 +706,8 @@ bool ThreadPool::create(int numThreads, int maxProviders, uint64_t nodeMask)
             new (m_workers + i)WorkerThread(*this, i);
 
     m_jpTable = X265_MALLOC(JobProvider*, maxProviders);
+    if (m_jpTable)
+        memset(m_jpTable, 0, sizeof(JobProvider*) * maxProviders);
     m_numProviders = 0;
 
     return m_workers && m_jpTable;
@@ -536,7 +734,7 @@ void ThreadPool::stopWorkers()
         m_isActive = false;
         for (int i = 0; i < m_numWorkers; i++)
         {
-            while (!(m_sleepBitmap & ((sleepbitmap_t)1 << i)))
+            while (!(SLEEPBITMAP_LOAD(&m_sleepBitmap) & ((sleepbitmap_t)1 << i)))
                 GIVE_UP_TIME();
             m_workers[i].awaken();
             m_workers[i].stop();
@@ -659,25 +857,173 @@ int ThreadPool::getCpuCount()
 #endif
 }
 
-void ThreadPool::getFrameThreadsCount(x265_param* p, int cpuCount)
+int ThreadPool::getFrameThreadsCount(x265_param* p, int cpuCount)
 {
     int rows = (p->sourceHeight + p->maxCUSize - 1) >> g_log2Size[p->maxCUSize];
     if (!p->bEnableWavefront)
-        p->frameNumThreads = X265_MIN3(cpuCount, (rows + 1) / 2, X265_MAX_FRAME_THREADS);
+        return X265_MIN3(cpuCount, (rows + 1) / 2, X265_MAX_FRAME_THREADS);
     else if (cpuCount >= 32)
-        p->frameNumThreads = (p->sourceHeight > 2000) ? 6 : 5; 
+        return (p->sourceHeight > 2000) ? 6 : 5; 
     else if (cpuCount >= 16)
-        p->frameNumThreads = 4; 
+        return 4; 
     else if (cpuCount >= 8)
 #if _WIN32 && X265_ARCH_ARM64
-        p->frameNumThreads = cpuCount;
+        return cpuCount;
 #else
-        p->frameNumThreads = 3;
+        return 3;
 #endif
     else if (cpuCount >= 4)
-        p->frameNumThreads = 2;
+        return 2;
     else
-        p->frameNumThreads = 1;
+        return 1;
+}
+
+int ThreadPool::configureTmeThreadCount(x265_param* param, int cpuCount)
+{
+    enum TmeResClass
+    {
+        TME_RES_LOW = 0,
+        TME_RES_MID,
+        TME_RES_HIGH,
+        TME_RES_COUNT
+    };
+
+    enum TmeRule
+    {
+        TME_RULE_SLOWER_VERYSLOW = 0,
+        TME_RULE_SLOW,
+        TME_RULE_FAST_MEDIUM,
+        TME_RULE_FASTER,
+        TME_RULE_VERYFAST,
+        TME_RULE_SUPERFAST,
+        TME_RULE_ULTRAFAST,
+        TME_RULE_COUNT
+    };
+
+    struct TmeRuleConfig
+    {
+        int taskBlockSize[TME_RES_COUNT];
+        int numBufferRows[TME_RES_COUNT];
+        int threadPercent[TME_RES_COUNT];
+        bool widthBasedTaskBlockSize;
+    };
+
+    static const TmeRuleConfig s_tmeRuleConfig[TME_RULE_COUNT] =
+    {
+        { { 1, 1, 1 }, { 3, 3, 3 }, { 90, 85, 70 }, false }, // slower / veryslow preset and similar options
+        { { 1, 1, 1 }, { 5, 5, 3 }, { 90, 85, 75 }, false }, // slow preset and similar options
+        { { 1, 1, 1 }, { 10, 10, 10 }, { 90, 80, 70 }, false }, // fast / medium preset and similar options
+        { { 1, 1, 1 }, { 10, 15, 10 }, { 90, 80, 70 }, false }, // faster preset and similar options
+        { { 1, 1, 1 }, { 10, 15, 20 }, { 90, 80, 70 }, false }, // veryfast preset and similar options
+        { { 2, 4, 4 }, { 10, 15, 20 }, { 90, 80, 60 }, false }, // superfast preset and similar options
+        { { 0, 0, 0 }, { 15, 20, 20 }, { 90, 80, 50 }, true  }  // ultrafast preset and similar options
+    };
+
+    const int resClass = (param->sourceHeight >= 1440) ? TME_RES_HIGH :
+                         (param->sourceHeight <= 720) ? TME_RES_LOW : TME_RES_MID;
+
+    const bool ruleMatches[TME_RULE_COUNT] =
+    {
+        param->maxNumReferences >= 5 || param->subpelRefine >= 4 || (param->bEnableRectInter && param->bEnableAMP),
+        param->maxNumReferences >= 4 || param->subpelRefine >= 3 || (param->bEnableRectInter ^ param->bEnableAMP),
+        param->maxNumReferences >= 3 && param->subpelRefine >= 2,
+        param->maxNumReferences >= 2 && param->subpelRefine >= 2,
+        param->subpelRefine >= 1 && param->bframes > 3,
+        param->subpelRefine && param->maxCUSize < 64,
+        !param->subpelRefine || param->searchMethod == X265_DIA_SEARCH || param->minCUSize >= 16
+    };
+
+    int selectedRule = -1;
+    for (int i = 0; i < TME_RULE_COUNT; i++)
+    {
+        if (ruleMatches[i])
+        {
+            selectedRule = i;
+            break;
+        }
+    }
+
+    bool isHighFreq = (getCPUFrequencyMHz() > 2000.0);
+
+    if (selectedRule >= 0)
+    {
+        const TmeRuleConfig& cfg = s_tmeRuleConfig[selectedRule];
+        param->tmeTaskBlockSize = cfg.widthBasedTaskBlockSize ? ((param->sourceWidth + 480 - 1) / 480) : cfg.taskBlockSize[resClass];
+        param->tmeNumBufferRows = cfg.numBufferRows[resClass];
+        return (!isHighFreq) ? (cpuCount * cfg.threadPercent[resClass]) / 100 : cpuCount / 2;
+    }
+
+    static const int s_defaultThreadPercent[TME_RES_COUNT] = { 80, 80, 70 };
+    return (!isHighFreq) ? (cpuCount * s_defaultThreadPercent[resClass]) / 100 : cpuCount / 2;
+}
+
+double getCPUFrequencyMHz()
+{
+#if defined(_WIN32)
+    HKEY hKey;
+    DWORD mhz = 0;
+    DWORD size = sizeof(mhz);
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                      "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                      0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        RegQueryValueExA(hKey, "~MHz", NULL, NULL, (LPBYTE)&mhz, &size);
+        RegCloseKey(hKey);
+    }
+    return (double)mhz;
+
+#elif defined(__APPLE__)
+    uint64_t freq = 0;
+    size_t size = sizeof(freq);
+    if (sysctlbyname("hw.cpufrequency", &freq, &size, NULL, 0) == 0)
+        return (double)freq / 1.0e6;
+    return 0.0;
+
+#else  /* Linux */
+    /* scaling_cur_freq reflects the live frequency chosen by the governor
+     * and EPP hint. Iterate over all cpuN entries and return the highest observed value.
+     */
+    {
+        uint64_t maxKhz = 0;
+        char path[64];
+        for (int cpu = 0; ; ++cpu)
+        {
+            snprintf(path, sizeof(path),
+                     "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", cpu);
+            std::ifstream f(path);
+            if (!f.is_open())
+                break;
+            uint64_t khz = 0;
+            f >> khz;
+            if (khz > maxKhz)
+                maxKhz = khz;
+        }
+        if (maxKhz > 0)
+            return (double)maxKhz / 1000.0;
+    }
+    /* Fall back to /proc/cpuinfo — collect the max "cpu MHz" across all entries. */
+    {
+        std::ifstream f("/proc/cpuinfo");
+        std::string line;
+        double maxMhz = 0.0;
+        while (std::getline(f, line))
+        {
+            if (line.find("cpu MHz") != std::string::npos)
+            {
+                size_t colon = line.find(':');
+                if (colon != std::string::npos)
+                {
+                    double mhz = strtod(line.c_str() + colon + 1, NULL);
+                    if (mhz > maxMhz)
+                        maxMhz = mhz;
+                }
+            }
+        }
+        if (maxMhz > 0.0)
+            return maxMhz;
+    }
+    return 0.0;
+#endif
 }
 
 } // end namespace X265_NS

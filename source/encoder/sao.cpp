@@ -718,7 +718,7 @@ void SAO::generateChromaOffsets(SaoCtuParam* ctuParam[3], int idxY, int idxX)
                     m_offsetEo[2][edgeType] = (int8_t)offset[s_eoTable[edgeType]];
             }
         }
-        applyPixelOffsets(addr, typeIdxCb, 2);
+        applyPixelOffsets(addr, typeIdxCr, 2);
     }
 
     std::swap(m_tmpL1[1], m_tmpL2[1]);
@@ -733,7 +733,6 @@ void SAO::calcSaoStatsCTU(int addr, int plane)
     const CUData* cu = m_frame->m_encData->getPicCTU(addr);
     const pixel* fenc0 = m_frame->m_fencPic->getPlaneAddr(plane, addr);
     const pixel* rec0  = reconPic->getPlaneAddr(plane, addr);
-    const pixel* fenc;
     const pixel* rec;
     intptr_t stride = plane ? reconPic->m_strideC : reconPic->m_stride;
     uint32_t picWidth  = m_param->sourceWidth;
@@ -863,7 +862,6 @@ void SAO::calcSaoStatsCTU(int addr, int plane)
                     skipR = 5;
                 }
 
-                fenc = fenc0;
                 rec  = rec0;
 
                 startX = !lpelx;
@@ -873,7 +871,6 @@ void SAO::calcSaoStatsCTU(int addr, int plane)
                 endY   = (bpely == picHeight) ? ctuHeight - 1 : ctuHeight - skipB + plane_offset;
                 if (startY)
                 {
-                    fenc += stride;
                     rec += stride;
                 }
 
@@ -888,7 +885,6 @@ void SAO::calcSaoStatsCTU(int addr, int plane)
                     skipB = 4;
                     skipR = 5;
                 }
-                fenc = fenc0;
                 rec  = rec0;
                 startX = !lpelx;
                 endX   = (rpelx == picWidth) ? ctuWidth - 1 : ctuWidth - skipR + plane_offset;
@@ -898,7 +894,6 @@ void SAO::calcSaoStatsCTU(int addr, int plane)
 
                 if (startY)
                 {
-                    fenc += stride;
                     rec += stride;
                 }
 
@@ -1067,7 +1062,15 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
             for (y = firstY; y < endY; y++)
             {
-                for (x = (y < startY - 1 ? startX : 0); x < ctuWidth; x++)
+                x = (y < startY - 1 ? startX : 0);
+
+                // NOTE: upBuff1[x < startX] is not maintained by the loop below, so it is
+                // uninitialized on the row where x first drops below startX, and stale after
+                // that. Recompute it here; this matches what the loop would have written.
+                for (int i = x; i < startX; i++)
+                    upBuff1[i] = x265_signOf(rec[i] - rec[i - stride]);
+
+                for (; x < ctuWidth; x++)
                 {
                     int signDown = x265_signOf(rec[x] - rec[x + stride]);
                     int edgeType = signDown + upBuff1[x] + 2;
@@ -1116,6 +1119,13 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
             for (y = firstY; y < endY; y++)
             {
                 x = (y < startY - 1 ? startX : firstX);
+
+                // NOTE: upBuff1[x < startX] is not maintained by the loop below, and the swap
+                // means it may come from _upBufft, which the fill above never touched.
+                // Recompute it here; this matches what the loop would have written.
+                for (int i = x; i < startX; i++)
+                    upBuff1[i] = x265_signOf(rec[i] - rec[i - stride - 1]);
+
                 upBufft[x] = x265_signOf(rec[x + stride] - rec[x - 1]);
                 for (; x < endX; x++)
                 {
@@ -1167,7 +1177,15 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
             for (y = firstY; y < endY; y++)
             {
-                for (x = (y < startY - 1 ? startX : firstX); x < endX; x++)
+                x = (y < startY - 1 ? startX : firstX);
+
+                // NOTE: upBuff1[x < startX - 1] is not maintained by the loop below, so it is
+                // uninitialized on the row where x first drops below startX, and stale after
+                // that. Recompute it here; this matches what the loop would have written.
+                for (int i = x; i < startX; i++)
+                    upBuff1[i] = x265_signOf(rec[i] - rec[i - stride + 1]);
+
+                for (; x < endX; x++)
                 {
                     int signDown = x265_signOf(rec[x] - rec[x + stride - 1]);
                     int edgeType = signDown + upBuff1[x] + 2;
@@ -1324,7 +1342,7 @@ void SAO::rdoSaoUnitCu(SAOParam* saoParam, int rowBaseAddr, int idxX, int addr)
                         estDist += estSaoDist(m_count[plane][typeIdx][classIdx + bandPos], mergeOffset, m_offsetOrg[plane][typeIdx][classIdx + bandPos]);
                     }
                 }
-                mergeDist += (estDist << 8) / lambda[!!plane];
+                mergeDist += (int64_t)((uint64_t)estDist << 8) / lambda[!!plane];
             }
 
             m_entropyCoder.load(m_rdContexts.cur);
@@ -1588,7 +1606,7 @@ void SAO::saoLumaComponentParamDist(SAOParam* saoParam, int32_t addr, int64_t& r
             lclCtuParam->offset[classIdx] = m_offset[0][SAO_BO][classIdx + bestClassBO];
     }
 
-    rateDist = (bestDist << 8) / lambda[0];
+    rateDist = (int64_t)((uint64_t)bestDist << 8) / lambda[0];
     m_entropyCoder.load(m_rdContexts.temp);
     m_entropyCoder.codeSaoOffset(*lclCtuParam, 0);
     m_entropyCoder.store(m_rdContexts.temp);
@@ -1733,7 +1751,7 @@ void SAO::saoChromaComponentParamDist(SAOParam* saoParam, int32_t addr, int64_t&
         }
     }
 
-    rateDist += (bestDist << 8) / lambda[1];
+    rateDist += (int64_t)((uint64_t)bestDist << 8) / lambda[1];
     m_entropyCoder.load(m_rdContexts.temp);
 
     if (saoParam->bSaoFlag[1])

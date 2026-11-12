@@ -37,12 +37,24 @@ if(POWER)
     set(NASM_SRC)
 endif(POWER)
 
+# add LoongArch64 assembly files
+if(LOONGARCH64)
+    enable_language(ASM)
+    set(NASM_SRC checkasm-loongarch64.S)
+    add_custom_command(
+        OUTPUT checkasm-loongarch64.obj
+        COMMAND ${CMAKE_CXX_COMPILER}
+        ARGS ${NASM_FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/checkasm-loongarch64.S -o checkasm-loongarch64.obj
+        DEPENDS checkasm-loongarch64.S)
+endif(LOONGARCH64)
+
 add_executable(TestBench ${NASM_SRC}
     testbench.cpp testharness.h
     pixelharness.cpp pixelharness.h
     mbdstharness.cpp mbdstharness.h
     ipfilterharness.cpp ipfilterharness.h
-    intrapredharness.cpp intrapredharness.h)
+    intrapredharness.cpp intrapredharness.h
+    mcstfharness.cpp mcstfharness.h)
 
 target_link_libraries(TestBench x265-static ${PLATFORM_LIBS})
 if(LINKER_OPTIONS)

@@ -30,6 +30,7 @@
 #define ENABLE_THREADING 1
 
 #if _WIN32
+#define strncasecmp _strnicmp
 #include <io.h>
 #include <fcntl.h>
 #if defined(_MSC_VER)
@@ -53,6 +54,11 @@ YUVInput::YUVInput(InputFileInfo& info, bool alpha, int format)
     threadActive = false;
     ifs = NULL;
 
+    if (colorSpace < 0 || colorSpace >= X265_CSP_MAX)
+    {
+        x265_log(NULL, X265_LOG_ERROR, "Invalid color space: %d\n", colorSpace);
+        return;
+    }
     uint32_t pixelbytes = depth > 8 ? 2 : 1;
     framesize = 0;
     for (int i = 0; i < x265_cli_csps[colorSpace].planes + alphaAvailable; i++)
@@ -99,7 +105,11 @@ YUVInput::YUVInput(InputFileInfo& info, bool alpha, int format)
 
     info.frameCount = -1;
     /* try to estimate frame count, if this is not stdin */
+#if _WIN32
+    if (ifs != stdin && strncasecmp(info.filename, "\\\\.\\pipe\\", 9))
+#else
     if (ifs != stdin)
+#endif
     {
         int64_t cur = ftello(ifs);
         if (cur >= 0)
@@ -113,7 +123,11 @@ YUVInput::YUVInput(InputFileInfo& info, bool alpha, int format)
     }
     if (info.skipFrames)
     {
+#if _WIN32
+        if (ifs != stdin && strncasecmp(info.filename, "\\\\.\\pipe\\", 9))
+#else
         if (ifs != stdin)
+#endif
             fseeko(ifs, (int64_t)framesize * info.skipFrames, SEEK_CUR);
         else
             for (int i = 0; i < info.skipFrames; i++)

@@ -206,6 +206,29 @@ bool MBDstHarness::check_dequant_primitive(dequant_scaling_t ref, dequant_scalin
 
 bool MBDstHarness::check_quant_primitive(quant_t ref, quant_t opt)
 {
+    // Test saturation with both signs, including nonzero levels that truncate to zero.
+    // qBits=8 keeps the C reference's intermediate arithmetic in range.
+    static const int levels[] = { 0, 1, 32767, 32768, 32769, 65535, 65536, 65537 };
+    ALIGN_VAR_32(int16_t, coef[1024]);
+    ALIGN_VAR_32(int32_t, quantCoeff[1024]);
+    for (int i = 0; i < 1024; i++)
+    {
+        coef[i] = (i & 1) ? -1 : 1;
+        quantCoeff[i] = levels[(i / 2) % 8] * 256;
+    }
+    for (int count = 16; count <= 1024; count *= 4)
+    {
+        uint32_t expected = ref(coef, quantCoeff, mintbuf1, mshortbuf2, 8, 0, count);
+        uint32_t actual = (uint32_t)checked(opt, coef, quantCoeff, mintbuf3, mshortbuf3, 8, 0, count);
+        if (expected != actual || memcmp(mshortbuf2, mshortbuf3, count * sizeof(int16_t)) ||
+            memcmp(mintbuf1, mintbuf3, count * sizeof(int32_t)))
+        {
+            printf("quant saturation boundary mismatch (numCoeff=%d, numSig=%u/%u)\n", count, actual, expected);
+            return false;
+        }
+        reportfail();
+    }
+
     int j = 0;
 
     for (int i = 0; i < ITERS; i++)
@@ -252,6 +275,27 @@ bool MBDstHarness::check_quant_primitive(quant_t ref, quant_t opt)
 
 bool MBDstHarness::check_nquant_primitive(nquant_t ref, nquant_t opt)
 {
+    // Both signs matter: abs(clip(-32768)) must retain the 0x8000 bit pattern.
+    static const int levels[] = { 0, 1, 32767, 32768, 32769, 65535, 65536, 65537 };
+    ALIGN_VAR_32(int16_t, coef[1024]);
+    ALIGN_VAR_32(int32_t, quantCoeff[1024]);
+    for (int i = 0; i < 1024; i++)
+    {
+        coef[i] = (i & 1) ? -1 : 1;
+        quantCoeff[i] = levels[(i / 2) % 8] * 256;
+    }
+    for (int count = 16; count <= 1024; count *= 4)
+    {
+        uint32_t expected = ref(coef, quantCoeff, mshortbuf2, 8, 0, count);
+        uint32_t actual = (uint32_t)checked(opt, coef, quantCoeff, mshortbuf3, 8, 0, count);
+        if (expected != actual || memcmp(mshortbuf2, mshortbuf3, count * sizeof(int16_t)))
+        {
+            printf("nquant saturation boundary mismatch (numCoeff=%d, numSig=%u/%u)\n", count, actual, expected);
+            return false;
+        }
+        reportfail();
+    }
+
     int j = 0;
     for (int i = 0; i < ITERS; i++)
     {
@@ -376,6 +420,66 @@ bool MBDstHarness::check_psyRdoQuant_primitive(psyRdoQuant_t ref, psyRdoQuant_t 
 
     return true;
 }
+
+bool MBDstHarness::check_nonPsyRdoQuantAll_primitive(nonPsyRdoQuantAll_t ref, nonPsyRdoQuantAll_t opt, int numCoeff)
+{
+    ALIGN_VAR_64(int64_t, refDest[MAX_TU_SIZE]);
+    ALIGN_VAR_64(int64_t, optDest[MAX_TU_SIZE]);
+
+    for (int i = 0, j = 0; i < ITERS; i++, j += INCR)
+    {
+        int64_t totalRdCostRef = rand();
+        int64_t totalUncodedCostRef = rand();
+        int64_t totalRdCostOpt = totalRdCostRef;
+        int64_t totalUncodedCostOpt = totalUncodedCostRef;
+        int index = rand() % TEST_CASES;
+
+        memset(refDest, 0, sizeof(refDest));
+        memset(optDest, 0, sizeof(optDest));
+        ref(short_test_buff[index] + j, refDest, &totalUncodedCostRef, &totalRdCostRef);
+        checked(opt, short_test_buff[index] + j, optDest, &totalUncodedCostOpt, &totalRdCostOpt);
+
+        if (memcmp(refDest, optDest, numCoeff * sizeof(*refDest)) ||
+            totalUncodedCostRef != totalUncodedCostOpt || totalRdCostRef != totalRdCostOpt)
+            return false;
+
+        reportfail();
+    }
+
+    return true;
+}
+
+bool MBDstHarness::check_psyRdoQuantAll_primitive(psyRdoQuantAll_t ref, psyRdoQuantAll_t opt, int numCoeff)
+{
+    ALIGN_VAR_64(int64_t, refDest[MAX_TU_SIZE]);
+    ALIGN_VAR_64(int64_t, optDest[MAX_TU_SIZE]);
+
+    const int64_t scales[] = { 0, INT32_MAX, 1LL << 31, (1LL << 32) + 1, (1LL << 36) - 1 };
+    const int numScales = sizeof(scales) / sizeof(scales[0]);
+    for (int i = 0, j = 0; i < ITERS; i++, j += INCR)
+    {
+        int64_t totalRdCostRef = rand();
+        int64_t totalUncodedCostRef = rand();
+        int64_t totalRdCostOpt = totalRdCostRef;
+        int64_t totalUncodedCostOpt = totalUncodedCostRef;
+        int64_t psyScale = i % 2 ? scales[(i / 2) % numScales] : rand();
+        int index = rand() % TEST_CASES;
+
+        memset(refDest, 0, sizeof(refDest));
+        memset(optDest, 0, sizeof(optDest));
+        ref(short_test_buff[index] + j, short_test_buff1[index] + j, refDest, &totalUncodedCostRef, &totalRdCostRef, &psyScale);
+        checked(opt, short_test_buff[index] + j, short_test_buff1[index] + j, optDest, &totalUncodedCostOpt, &totalRdCostOpt, &psyScale);
+
+        if (memcmp(refDest, optDest, numCoeff * sizeof(*refDest)) ||
+            totalUncodedCostRef != totalUncodedCostOpt || totalRdCostRef != totalRdCostOpt)
+            return false;
+
+        reportfail();
+    }
+
+    return true;
+}
+
 bool MBDstHarness::check_psyRdoQuant_primitive_avx2(psyRdoQuant_t1 ref, psyRdoQuant_t1 opt)
 {
     int j = 0;
@@ -524,7 +628,7 @@ bool MBDstHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
     {
         if (!check_dequant_primitive(ref.dequant_normal, opt.dequant_normal))
         {
-            printf("dequant: Failed!\n");
+            printf("dequant_normal: Failed!\n");
             return false;
         }
     }
@@ -576,6 +680,22 @@ bool MBDstHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
                 printf("psyRdoQuant[%dx%d]: Failed!\n", 4 << i, 4 << i);
                 return false;
             }
+        }
+    }
+    for (int i = 0; i < NUM_TR_SIZE; i++)
+    {
+        int numCoeff = 1 << (2 * (i + 2));
+        if (opt.cu[i].nonPsyRdoQuantAll &&
+            !check_nonPsyRdoQuantAll_primitive(ref.cu[i].nonPsyRdoQuantAll, opt.cu[i].nonPsyRdoQuantAll, numCoeff))
+        {
+            printf("nonPsyRdoQuantAll[%dx%d]: Failed!\n", 4 << i, 4 << i);
+            return false;
+        }
+        if (opt.cu[i].psyRdoQuantAll &&
+            !check_psyRdoQuantAll_primitive(ref.cu[i].psyRdoQuantAll, opt.cu[i].psyRdoQuantAll, numCoeff))
+        {
+            printf("psyRdoQuantAll[%dx%d]: Failed!\n", 4 << i, 4 << i);
+            return false;
         }
     }
     for (int i = 0; i < NUM_TR_SIZE; i++)
@@ -655,8 +775,10 @@ void MBDstHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
 
     if (opt.dequant_normal)
     {
+        int scale = 72 << X265_DEPTH;
+        int shift = X265_DEPTH - 4;
         printf("dequant_normal\t");
-        REPORT_SPEEDUP(opt.dequant_normal, ref.dequant_normal, short_test_buff[0], mshortbuf2, 32 * 32, 70, 1);
+        REPORT_SPEEDUP(opt.dequant_normal, ref.dequant_normal, short_test_buff[0], mshortbuf2, 32 * 32, scale, shift);
     }
 
     if (opt.dequant_scaling)

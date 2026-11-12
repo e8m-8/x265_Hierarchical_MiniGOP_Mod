@@ -22,9 +22,10 @@ if(ENABLE_ASSEMBLY AND X86)
     set(SSE3  vec/dct-sse3.cpp)
     set(SSSE3 vec/dct-ssse3.cpp)
     set(SSE41 vec/dct-sse41.cpp)
+    set(AVX2  vec/temporalfilter-avx2.cpp)
 
     if(MSVC)
-        set(PRIMITIVES ${SSE3} ${SSSE3} ${SSE41})
+        set(PRIMITIVES ${SSE3} ${SSSE3} ${SSE41} ${AVX2})
         set(WARNDISABLE "/wd4100") # unreferenced formal parameter
         if(INTEL_CXX)
             add_definitions(/Qwd111) # statement is unreachable
@@ -39,6 +40,7 @@ if(ENABLE_ASSEMBLY AND X86)
             # x64 implies SSE4, so only add /arch:SSE2 if building for Win32
             set_source_files_properties(${SSE3} ${SSSE3} ${SSE41} PROPERTIES COMPILE_FLAGS "${WARNDISABLE} /arch:SSE2")
         endif()
+        set_source_files_properties(${AVX2} PROPERTIES COMPILE_FLAGS "${WARNDISABLE} /arch:AVX2")
     endif()
     if(GCC)
         if(CLANG)
@@ -48,10 +50,11 @@ if(ENABLE_ASSEMBLY AND X86)
             set(WARNDISABLE "-Wno-unused-parameter")
         endif()
         if(INTEL_CXX OR CLANG OR (NOT CC_VERSION VERSION_LESS 4.3))
-            set(PRIMITIVES ${SSE3} ${SSSE3} ${SSE41})
+            set(PRIMITIVES ${SSE3} ${SSSE3} ${SSE41} ${AVX2})
             set_source_files_properties(${SSE3}  PROPERTIES COMPILE_FLAGS "${WARNDISABLE} -msse3")
             set_source_files_properties(${SSSE3} PROPERTIES COMPILE_FLAGS "${WARNDISABLE} -mssse3")
             set_source_files_properties(${SSE41} PROPERTIES COMPILE_FLAGS "${WARNDISABLE} -msse4.1")
+            set_source_files_properties(${AVX2}  PROPERTIES COMPILE_FLAGS "${WARNDISABLE} -mavx2")
         endif()
     endif()
     set(VEC_PRIMITIVES vec/vec-primitives.cpp ${PRIMITIVES})
@@ -105,23 +108,25 @@ if(ENABLE_ASSEMBLY AND (ARM64 OR CROSS_COMPILE_ARM64))
 
     # Add Arm intrinsics files here.
     set(C_SRCS_NEON asm-primitives.cpp pixel-prim.h pixel-prim.cpp filter-prim.h filter-prim.cpp dct-prim.h dct-prim.cpp loopfilter-prim.cpp loopfilter-prim.h intrapred-prim.cpp arm64-utils.cpp arm64-utils.h fun-decls.h sao-prim.cpp  mem-neon.h)
-    set(C_SRCS_NEON_DOTPROD filter-neon-dotprod.cpp)
+    set(C_SRCS_NEON_DOTPROD filter-neon-dotprod.cpp pixel-prim-neon-dotprod.cpp)
     set(C_SRCS_NEON_I8MM filter-neon-i8mm.cpp)
-    set(C_SRCS_SVE sao-prim-sve.cpp dct-prim-sve.cpp)
-    set(C_SRCS_SVE2 sao-prim-sve2.cpp)
+    set(C_SRCS_SVE sao-prim-sve.cpp dct-prim-sve.cpp filter-prim-sve.h filter-prim-sve.cpp pixel-prim-sve.cpp)
+    set(C_SRCS_SVE2 sao-prim-sve2.cpp pixel-prim-sve2.cpp)
     enable_language(ASM)
 
     # Add Arm assembly files here.
-    set(A_SRCS asm.S mc-a.S mc-a-common.S sad-a.S pixel-util.S pixel-util-common.S p2s.S p2s-common.S blockcopy8.S blockcopy8-common.S ssd-a.S ssd-a-common.S intrapred.S dct.S)
+    set(A_SRCS asm.S mc-a.S mc-a-common.S sad-a.S pixel-util.S pixel-util-common.S p2s.S p2s-common.S blockcopy8.S ssd-a.S ssd-a-common.S intrapred.S)
     set(A_SRCS_NEON_DOTPROD sad-neon-dotprod.S ssd-neon-dotprod.S)
-    set(A_SRCS_SVE asm-sve.S blockcopy8-sve.S p2s-sve.S pixel-util-sve.S)
-    set(A_SRCS_SVE2 mc-a-sve2.S pixel-util-sve2.S ssd-a-sve2.S)
+    set(A_SRCS_SVE asm-sve.S p2s-sve.S pixel-util-sve.S ssd-a-sve.S)
+    set(A_SRCS_SVE2 mc-a-sve2.S pixel-util-sve2.S)
+    set(A_SRCS_SVE2_BITPERM pixel-util-sve2-bitperm.S)
     set(VEC_PRIMITIVES)
 
-    set(ARM_ASMS "${A_SRCS}" CACHE INTERNAL "ARM Assembly Sources")
-    set(ARM_ASMS_SVE "${A_SRCS_SVE}" CACHE INTERNAL "ARM Assembly Sources that use SVE instruction set")
-    set(ARM_ASMS_SVE2 "${A_SRCS_SVE2}" CACHE INTERNAL "ARM Assembly Sources that use SVE2 instruction set")
+    set(ARM_ASMS "${A_SRCS}" CACHE INTERNAL "Arm Assembly Sources")
     set(ARM_ASMS_NEON_DOTPROD "${A_SRCS_NEON_DOTPROD}" CACHE INTERNAL "Arm Assembly Sources that use the Neon DotProd extension")
+    set(ARM_ASMS_SVE "${A_SRCS_SVE}" CACHE INTERNAL "Arm Assembly Sources that use the SVE extension")
+    set(ARM_ASMS_SVE2 "${A_SRCS_SVE2}" CACHE INTERNAL "Arm Assembly Sources that use the SVE2 extension")
+    set(ARM_ASMS_SVE2_BITPERM "${A_SRCS_SVE2_BITPERM}" CACHE INTERNAL "Arm Assembly Sources that use the SVE2 BitPerm extension")
     foreach(SRC ${C_SRCS_NEON})
         set(ASM_PRIMITIVES ${ASM_PRIMITIVES} aarch64/${SRC})
         set_source_files_properties(aarch64/${SRC} PROPERTIES COMPILE_FLAGS ${AARCH64_NEON_FLAG})
@@ -162,6 +167,39 @@ if(ENABLE_ASSEMBLY AND (ARM64 OR CROSS_COMPILE_ARM64))
     endif()
 endif(ENABLE_ASSEMBLY AND (ARM64 OR CROSS_COMPILE_ARM64))
 
+if(ENABLE_ASSEMBLY AND (RISCV64 OR CROSS_COMPILE_RISCV64))
+    if(GCC AND (CMAKE_CXX_FLAGS_RELEASE MATCHES "-O3"))
+        message(STATUS "Detected CXX compiler using -O3 optimization level")
+        add_definitions(-DAUTO_VECTORIZE=1)
+    endif()
+
+    set(ASM_PRIMITIVES ${ASM_PRIMITIVES} riscv64/asm-primitives.cpp)
+
+    # Add riscv64 intrinsics files here.
+    set(INTRINSIC_SRCS_RVV pixel-prim.cpp sao-prim.cpp filter-prim.cpp intrapred-prim.cpp riscv64_utils.cpp)
+    if(CPU_HAS_RVV_INTRINSIC)
+        foreach(SRC ${INTRINSIC_SRCS_RVV})
+            set(ASM_PRIMITIVES ${ASM_PRIMITIVES} riscv64/${SRC})
+            set_source_files_properties(riscv64/${SRC} PROPERTIES COMPILE_FLAGS ${RISCV64_INTRINSIC_FLAG})
+        endforeach()
+    endif()
+
+    enable_language(ASM)
+    source_group(Assembly FILES ${ASM_PRIMITIVES})
+
+    # Add riscv64 assembly files here.
+    set(A_SRCS asm.S blockcopy8.S dct.S sad-a.S ssd-a.S pixel-util.S mc-a.S p2s.S sao.S loopfilter.S intrapred.S riscv64_utils.S)
+    set(VEC_PRIMITIVES)
+
+    if(CPU_HAS_RVV)
+        set(RISCV64_ASMS "${A_SRCS}" CACHE INTERNAL "RISCV64 Assembly Sources")
+    endif()
+
+    if(RISCV64_WARNINGS_AS_ERRORS)
+        set_source_files_properties(${ASM_PRIMITIVES} PROPERTIES COMPILE_FLAGS -Werror)
+    endif()
+endif(ENABLE_ASSEMBLY AND (RISCV64 OR CROSS_COMPILE_RISCV64))
+
 if(POWER)
     set_source_files_properties(version.cpp PROPERTIES COMPILE_FLAGS -DX265_VERSION=${X265_VERSION})
     if(ENABLE_ALTIVEC)
@@ -174,6 +212,25 @@ if(POWER)
     endif()
 endif()
 
+if(ENABLE_ASSEMBLY AND LOONGARCH64)
+    if(GCC AND (CMAKE_CXX_FLAGS_RELEASE MATCHES "-O3"))
+        message(STATUS "Detected CXX compiler using -O3 optimization level")
+    endif()
+
+    set(C_SRCS asm-primitives.cpp loopfilter.h ipfilter8.h dct.h pixel.h intrapred.h blockcopy8.h)
+    enable_language(ASM)
+
+    # add loongarch assembly/intrinsic files here
+    set(A_SRCS loopfilter.S ipfilter8.S dct.S mc-a.S intrapred8.S pixel.S ssd.S sad.S mc-a2.S blockcopy8.S)
+
+    set(LOONGARCH64_ASMS "${A_SRCS}" CACHE INTERNAL "LOONGARCH64 Assembly Sources")
+    foreach(SRC ${C_SRCS})
+        set(ASM_PRIMITIVES ${ASM_PRIMITIVES} loongarch64/${SRC})
+    endforeach()
+    source_group(Assembly FILES ${ASM_PRIMITIVES})
+
+endif(ENABLE_ASSEMBLY AND LOONGARCH64)
+
 
 # set_target_properties can't do list expansion
 string(REPLACE ";" " " VERSION_FLAGS "${VFLAGS}")
@@ -185,7 +242,11 @@ if(HAVE_STRTOK_R)
 endif()
 
 if(GCC AND CC_HAS_NO_NARROWING)
-    set_source_files_properties(cpu.cpp PROPERTIES COMPILE_FLAGS -Wno-narrowing)
+    if(ENABLE_ASSEMBLY)
+        set_source_files_properties(cpu.cpp PROPERTIES COMPILE_FLAGS "-DENABLE_ASSEMBLY=1 -Wno-narrowing")
+    else()
+        set_source_files_properties(cpu.cpp PROPERTIES COMPILE_FLAGS -Wno-narrowing)
+    endif()
 endif()
 if(WIN32)
     set(WINXP winxp.h winxp.cpp)

@@ -282,7 +282,10 @@ int x265_encoder_headers(x265_encoder *enc, x265_nal **pp_nal, uint32_t *pi_nal)
                 return -1;
             }
         }
-        encoder->getStreamHeaders(encoder->m_nalList, sbacCoder, bs);
+        NALList nalList;
+        nalList.m_annexB = encoder->m_nalList.m_annexB;
+        encoder->getStreamHeaders(nalList, sbacCoder, bs);
+        encoder->m_nalList.takeContents(nalList);
         *pp_nal = &encoder->m_nalList.m_nal[0];
         if (pi_nal) *pi_nal = encoder->m_nalList.m_numNal;
         return encoder->m_nalList.m_occupancy;
@@ -309,7 +312,7 @@ int x265_encoder_reconfig(x265_encoder* enc, x265_param* param_in)
 {
     if (!enc || !param_in)
         return -1;
-    x265_param save;
+    x265_param save = {};
     Encoder* encoder = static_cast<Encoder*>(enc);
     if (strlen(encoder->m_param->csvfn) && param_in->csvfpt != NULL)
          encoder->m_param->csvfpt = param_in->csvfpt;
@@ -965,8 +968,8 @@ void x265_free_analysis_data(x265_param *param, x265_analysis_data* analysis)
 
         if (maxReuseLevel > 4)
         {
-            X265_FREE((analysis->interData)->mergeFlag);
-            X265_FREE((analysis->interData)->partSize);
+             X265_FREE((analysis->interData)->mergeFlag);
+             X265_FREE((analysis->interData)->partSize);
         }
         if (maxReuseLevel >= 7)
         {
@@ -1403,6 +1406,8 @@ FILE* x265_csvlog_open(const x265_param* param)
                     /* detailed performance statistics */
                     fprintf(csvfp, ", DecideWait (ms), Row0Wait (ms), Wall time (ms), Ref Wait Wall (ms), Total CTU time (ms),"
                         "Stall Time (ms), Total frame time (ms), Avg WPP, Row Blocks");
+
+                    fprintf(csvfp, ", Total ThreadedME Wait Time (ms), Total ThreadedME Time (ms)");
 #if ENABLE_LIBVMAF
                     fprintf(csvfp, ", VMAF Frame Score");
 #endif
@@ -1415,6 +1420,8 @@ FILE* x265_csvlog_open(const x265_param* param)
                         else if (param->rc.rateControlMode == X265_RC_CQP)
                             fprintf(csvfp, ", Target QP");
                     }
+                    if (param->bSelectiveMCSTF)
+                        fprintf(csvfp, ", Frame Noise, IsMCSTFEnabled");
                 }
                 fprintf(csvfp, "\n");
             }
@@ -1539,6 +1546,9 @@ void x265_csvlog_frame(const x265_param* param, const x265_picture* pic)
                                                                                      frameStats->totalFrameTime);
 
         fprintf(param->csvfpt, " %.3lf, %d", frameStats->avgWPP, frameStats->countRowBlocks);
+
+        fprintf(param->csvfpt, ", %.1lf, %.1lf", frameStats->tmeWaitTime / 1000.0, frameStats->tmeTime / 1000.0);
+
 #if ENABLE_LIBVMAF
         fprintf(param->csvfpt, ", %lf", frameStats->vmafFrameScore);
 #endif
@@ -1550,6 +1560,13 @@ void x265_csvlog_frame(const x265_param* param, const x265_picture* pic)
                 fprintf(param->csvfpt, ", %f", frameStats->currTrCRF);
             else if (param->rc.rateControlMode == X265_RC_CQP)
                 fprintf(param->csvfpt, ", %d", frameStats->currTrQP);
+        }
+        if (param->bSelectiveMCSTF)
+        {
+            if (frameStats->frameNoise >= 0)
+                fprintf(param->csvfpt, ", %d, %d", frameStats->frameNoise, frameStats->isMCSTFEnabled);
+            else
+                fprintf(param->csvfpt, ", -, %d", frameStats->isMCSTFEnabled);
         }
     }
     fprintf(param->csvfpt, "\n");
