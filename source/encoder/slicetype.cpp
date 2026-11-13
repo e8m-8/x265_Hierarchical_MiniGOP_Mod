@@ -2849,12 +2849,9 @@ void Lookahead::slicetypeDecide()
                 }
                 else
                 {
-                    for (int i = 0; i < bframes; i++)
-                        if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
-                        {
-                            list[i]->m_reorderedPts = pts[idx++];
-                            m_outputQueue.pushBack(*list[i]);
-                        }
+                    int i = bframes / 2;
+                    list[i]->m_reorderedPts = pts[idx++];
+                    m_outputQueue.pushBack(*list[i]);
                 }
             }
 
