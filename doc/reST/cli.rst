@@ -446,7 +446,7 @@ Performance Options
 	be applied after :option:`--preset` but before all other parameters. Default none.
 	See :ref:`tunings <tunings>` for more detail.
 
-	**Values:** psnr, ssim, grain, zero-latency, fast-decode, animation.
+	**Values:** psnr, ssim, grain, zero-latency, fast-decode, fast-decode-low-delay, minigop-8, minigop-9nd, minigop-16, adapt-minigop, animation.
 
 .. option:: --slices <integer>
 
@@ -1638,29 +1638,39 @@ Slice decision options
 	With b-adapt 0, the GOP structure is fixed based on the values of
 	:option:`--keyint` and :option:`--bframes`.
 	
-	With b-adapt 1 a light lookahead is used to choose B frame placement.
+	With b-adapt 1 (fast) a light lookahead is used to choose B frame placement.
 
-	With b-adapt 2 (trellis) a viterbi B path selection is performed
+	With b-adapt 2 (trellis) a viterbi B path selection is performed.
+    
+    With b-adapt 3 (auto) a viterbi B path selection with minimum cost based 
+    adaptive reference B-frame insertion, or hierarchical reference B-frame
+    insertion when `--temporal-layers` > 3. Requires enabled `--b-pyramid`.
 
-	**Values:** 0:none; 1:fast; 2:full(trellis) **default**
+	**Values:** 0:none; 1:fast; 2:full(trellis); 3:auto **default**
 
 .. option:: --bframes, -b <0..16>
 
 	Maximum number of consecutive b-frames. Use :option:`--bframes` 0 to
-	force all P/I low-latency encodes. Default 4. This parameter has a
-	quadratic effect on the amount of memory allocated and the amount of
-	work performed by the full trellis version of :option:`--b-adapt`
-	lookahead.
+	force all P/I low-latency encodes. Default 4. When --temporal-layers > 2,
+    it will be set to specific values. This parameter has a quadratic effect
+    on the amount of memory allocated and the amount of work performed
+    by the full trellis version of :option:`--b-adapt` lookahead.
 
 .. option:: --bframe-bias <integer>
 
 	Bias towards B frames in slicetype decision. The higher the bias the
 	more likely x265 is to use B frames. Can be any value between -90
-	and 100 and is clipped to that range. Default 0
+	and 100 and is clipped to that range. When `--temporal-layers` > 3,
+    Can be any value between -90 and 300 and is clipped to that range.
+    Default 0.
 
 .. option:: --b-pyramid, --no-b-pyramid
 
 	Use B-frames as references, when possible. Default enabled
+
+.. option:: --b-gpb, --no-b-gpb
+
+	Encode P pictures as Generalized P/B (GPB) B slices. Default disabled. Experimental feature.
 
 .. option:: --force-flush <integer>
 
@@ -1782,13 +1792,13 @@ Quality, rate control and rate distortion options
 
 .. option:: --qp, -q <integer>
 
-	Specify base quantization parameter for Constant QP rate control.
-	Using this option enables Constant QP rate control. The specified QP
-	is assigned to P slices. I and B slices are given QPs relative to P
-	slices using param->rc.ipFactor and param->rc.pbFactor unless QP 0
-	is specified, in which case QP 0 is used for all slice types.  Note
-	that QP 0 does not cause lossless encoding, it only disables
-	quantization. Default disabled.
+	Specify base quantization parameter for Constant QP rate control. Using this option
+    enables Constant QP rate control. The specified QP is assigned to P slices. 
+    I and B slices are given QPs relative to P slices using param->rc.ipFactor and param->rc.pbFactor, 
+    upper-layer B slices are given QPs relative to lower-layer B slices using param->rc.bbFactor,
+    and non-reference B slices are given QPs relative to reference B slices using param->rc.rbFactor
+    unless QP 0 is specified, in which case QP 0 is used for all slice types. Note that QP 0 does not
+    cause lossless encoding, it only disables quantization. Default disabled.
 
 	**Range of values:** an integer from 0 to 51
 
@@ -1978,6 +1988,22 @@ Quality, rate control and rate distortion options
 	QP ratio factor between P and B slices. This ratio is used in all of
 	the rate control modes. Some :option:`--tune` options may change the
 	default value. It is not typically manually specified. Default 1.3
+
+.. option:: --brbratio <float>, --rbratio <float>
+
+	QP ratio factor between reference B and non-reference B slices. This
+    ratio is used in all of the rate control modes. Some :option:`--tune`
+    options may change the default value. It is not typically manually
+    specified. Default 1.0
+
+.. option:: --bbratio <float>, --bbratio <float>: ... :<float>
+
+	QP ratio factor hierarchical B slices, between upper-layer and lower
+    layer. This ratio is used in all of the rate control modes. Use ':'
+    to separate the independent QP factor for each layer. '--bbratio 1.1'
+    means '--bbratio 1.1:1.1:1.1 ...' based on the max-layers of b slices.
+    Some :option:`--tune` options may change the default value.
+    It is not typically manually specified. Default 0.8:1.3:0.9
 
 .. option:: --qcomp <float>
 
@@ -2724,22 +2750,65 @@ Bitstream options
 
 .. option:: --temporal-layers <integer>
 
-	Enable specified number of temporal sub layers. For any frame in layer N,
-	all referenced frames are in the layer N or N-1.A decoder may choose to drop the enhancement layer
-	and only decode and display the base layer slices.Allowed number of temporal sub-layers
-	are 2 to 5.(2 and 5 inclusive)
+	Enable specified number of temporal sub layers. For any frame in layer N, all referenced 
+    frames are in the layer N or N-1. A decoder may choose to drop the enhancement layer and
+    only decode and display the base layer slices. Allowed number of temporal sub-layers are
+    [2, 5] with experimental values [6, 7]. Default disabled.
 
-	When enabled, temporal layers 3 through 5 configure a fixed miniGOP with the number of B-frames as shown below, unless the miniGOP size is modified due to lookahead decisions. Temporal layer 2 is a special case that has all reference frames in the base layer and non-reference frames in the enhancement layer without any constraint on the number of B-frames. By default, this feature is disabled.
+    Temporal layer 2 is a special case that has all reference frames in the base layer and non-
+    reference frames in the enhancement layer without any constraint on the number of B-frames.
+	+----------------+---+------+---+------+---+------+---+---+
+	|   Poc-number   | 1 |  2   | 3 |  4   | 5 |  6   | 7 | 8 |
+	+================+===+======+===+======+===+======+===+===+
+	|   Base layer   |   | Bref |   | Bref |   | Bref |   | P |
+	+----------------+---+------+---+------+---+------+---+---+
+	| Enhanced layer | b |      | b |      | b |      | b |   |
+	+----------------+---+------+---+------+---+------+---+---+
+    
+    When `--b-adapt` disabled, `--temporal-layers > 2` is tied to a fixed maximum number of B-frames:
+	+----------------+--------+--------+--------+-----+---------+
+	| temporal Layer |   L1   |   L2   |   L3   | L4  | bframes |
+	+================+========+========+========+=====+=========+
+	|       3        | 1-Bref | 2-b    |   xx   | xx  |    3    |
+	+----------------+--------+--------+--------+-----+---------+
+	|       4        | 1-Bref | 2-Bref | 4-b    | xx  |    7    |
+	+----------------+--------+--------+--------+-----+---------+
+	|       5        | 1-Bref | 2-Bref | 4-Bref | 8-b |   15    |
+	+----------------+--------+--------+--------+-----+---------+
+    
+    `--h-nondyadic-gop` is a special case that has nondyadic hierarchical b slices implementation
+    with 3 temporal layers, `--bframes` values [5, 8], Default 8:
+	+---------+--------+-----+
+	| bframes |   L1   | L2  |
+	+=========+========+=====+
+	|    5    | 2-Bref | 3-b |
+	+---------+--------+-----+
+	|    6    | 2-Bref | 4-b |
+	+---------+--------+-----+
+	|    7    | 2-Bref | 5-b |
+	+---------+--------+-----+
+	|    8    | 2-Bref | 6-b |
+	+---------+--------+-----+
+    
+	MiniGOP size could be modified due to lookahead decisions or `--b-adapt` B path selection.
+    
+    Temporal layers could be reduced due to viterbi B path selection when `--b-adapt` is enabled.
+    
+    When `--b-adapt 3`, --temporal-layers is no longer tied to a fixed maximum number of B-frames,
+    the Bframes length and the positions of each reference B-frame are selected adaptively.
+    
+    At the same time, `--b-adapt 3` allows `--temporal-layers 6/7` (requires `--ref 8` and `--allow-non-conformance`).
 
-	+----------------+--------+
-	| temporal Layer | bframes|
-	+================+========+
-	| 3              | 3      |
-	+----------------+--------+
-	| 4              | 7      |
-	+----------------+--------+
-	| 5              | 15     |
-	+----------------+--------+
+.. option:: --bref-on-base-layer, --no-bref-on-base-layer
+
+	Using ref-B slices in base temporal sub layer and compressing higher
+    layers to layer 2. When enable, it limit the keyframe distance at 4.
+    Default disabled. Experimental feature.
+
+.. option:: --h-nondyadic-gop, --no-h-nondyadic-gop
+
+	Using 5/6/7/8 B slices Nondyadic Hierarchical B slices implementation with 3 temporal layers.
+    When enable, it limit the `--temporal-layers 3`, `--bframes 5/6/7/8`. Default disabled.
 
 .. option:: --log2-max-poc-lsb <integer>
 

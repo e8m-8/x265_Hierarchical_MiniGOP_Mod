@@ -400,10 +400,10 @@ namespace X265_NS {
         H0("   --[no-]info                   Emit SEI identifying encoder and parameters. Default %s\n", OPT(param->bEmitInfoSEI));
         H0("   --[no-]hrd                    Enable HRD parameters signaling. Default %s\n", OPT(param->bEmitHRDSEI));
         H0("   --[no-]idr-recovery-sei       Emit recovery point infor SEI at each IDR frame \n");
-        H0("   --temporal-layers             Enable by specifying number of [2, 5]. Default %s\n"
+        H0("   --temporal-layers             Enable by specifying number of [2, 5]. Default %s. Experimental values [6, 7].\n"
             "                                   - 2 : all reference frames in the base layer and non-reference frames in the enhancement layer,\n"
             "                                         without any constraint on the number of B-frames.\n"
-            "                                   - 3 : 3-frame Hierarchical B-frame or 8-frame Nondyadic Hierarchical B-frame implementation.\n"
+            "                                   - 3 : 3-frame Hierarchical B-frame or Max.8-frame Nondyadic Hierarchical B-frame implementation.\n"
             "                                         1P - 1B - 2b miniGOP 4-frame structure, with 3 temporal layers.\n"
             "                                         1P - 2B - 6b miniGOP 9-frame structure, with 3 temporal layers.\n"
             "                                   - 4 : 7-frame Hierarchical B-frame implementation.\n"
@@ -411,14 +411,14 @@ namespace X265_NS {
             "                                   - 5 : 15-frame Hierarchical B-frame implementation.\n"
             "                                         1P - 1B - 2B - 4B - 8b miniGOP structure, with 5 temporal layers.\n"
             "                                  miniGOP size could be modified due to lookahead decisions.\n"
-            "                                  temporal layers could be reduced due to viterbi B path selection when --b-adapt = 2/3.\n"
-            "                                  When --b-adapt=3 is enabled, --temporal-layers is no longer tied to a fixed maximum number of B-frames.\n"
+            "                                  temporal layers could be reduced due to viterbi B path selection when --b-adapt enabled.\n"
+            "                                  When --b-adapt = 3, --temporal-layers is no longer tied to a fixed maximum number of B-frames.\n"
             "                                  The B-frame length and the positions of each reference B-frame are selected adaptively.\n"
             "                                  At the same time, --b-adapt=3 allows --temporal-layers=6/7 (requires --ref=8 and --allow-non-conformance).\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]bref-on-base-layer     Using B-ref Frame in Base Temporal Sub Layer and Compressing higher layers to layer 2.\n"
             "                                   When enable, it limit the keyframe distance at 4.\n");
-        H0("   --[no-]h-nondyadic-gop        Using 8-frame Nondyadic Hierarchical B-frame implementation with 3 temporal layers.\n"
-            "                                   When enable, it limit the --temporal-layers = 3, --bframes = 8.\n");
+        H0("   --[no-]h-nondyadic-gop        Using 5/6/7/8-frame Nondyadic Hierarchical B-frame implementation with 3 temporal layers.\n"
+            "                                   When enable, it limit the --temporal-layers = 3, --bframes = 5/6/7/8.\n");
         H0("   --[no-]aud                    Emit access unit delimiters at the start of each access unit. Default %s\n", OPT(param->bEnableAccessUnitDelimiters));
         H0("   --[no-]eob                    Emit end of bitstream nal unit at the end of the bitstream. Default %s\n", OPT(param->bEnableEndOfBitstream));
         H0("   --[no-]eos                    Emit end of sequence nal unit at the end of every coded video sequence. Default %s\n", OPT(param->bEnableEndOfSequence));
