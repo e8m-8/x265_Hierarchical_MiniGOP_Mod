@@ -1451,9 +1451,22 @@ jobs:
             fi
             rm -f /tmp/out.hevc
           done
+          echo "### Presets in Hierarchical MiniGOP 16" >> /tmp/summary.log
+          for preset in ultrafast superfast veryfast faster fast medium slow slower veryslow; do
+            TOTAL=$((TOTAL + 1))
+            if /tmp/run_x265.sh "Preset $preset" \
+              $X265 --preset $preset --tune minigop16 --crf 28 \
+              --input-res 416x240 --fps 30 --frames 30 \
+              -o /tmp/out.hevc testdata/test_8bit_416x240.yuv; then
+              PASS=$((PASS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+            rm -f /tmp/out.hevc
+          done
           echo "" >> /tmp/summary.log
           echo "### Tune Modes" >> /tmp/summary.log
-          for tune in psnr ssim grain fastdecode zerolatency; do
+          for tune in psnr ssim grain fastdecode zerolatency minigop8 minigop9nd minigop16 adaptminigop; do
             TOTAL=$((TOTAL + 1))
             if /tmp/run_x265.sh "Tune $tune" \
               $X265 --preset medium --tune $tune --crf 28 \
@@ -1510,8 +1523,18 @@ jobs:
           /tmp/run_x265.sh "No SAO/Deblock"     $X265 --preset medium --no-sao --no-deblock --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Limit SAO"          $X265 --preset medium --limit-sao --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Weighted P+B"       $X265 --preset medium --weightp --weightb --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "B-frames 0"         $X265 --preset medium --bframes 0  --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "B-frames 16"        $X265 --preset medium --bframes 16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 0"                                  $X265 --preset medium --bframes 0  --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 16"                                 $X265 --preset medium --bframes 16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 16 + B-adapt 3"                     $X265 --preset medium --bframes 16 --b-adapt 3 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 2 + B-frames 9"              $X265 --preset medium --temporal-layers 2 --bframes 9 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 3"                           $X265 --preset medium --temporal-layers 3 --b-adapt 0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 3 Nondyadic + B-frames 8"    $X265 --preset medium --temporal-layers 3 --b-adapt 0 --bframes 8 --h-nondyadic-gop --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 4"                           $X265 --preset medium --temporal-layers 4 --b-adapt 0 --bframes 7 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5"                           $X265 --preset medium --temporal-layers 5 --b-adapt 0 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 1"               $X265 --preset medium --temporal-layers 5 --b-adapt 1 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 2"               $X265 --preset medium --temporal-layers 5 --b-adapt 2 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 3"               $X265 --preset medium --temporal-layers 5 --b-adapt 3 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-frames 7 + B-adapt 3"  $X265 --preset medium --temporal-layers 5 --b-adapt 3 --bframes 7 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Infinite Keyint"    $X265 --preset medium --keyint -1 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Short Keyint"       $X265 --preset medium --keyint 10 --min-keyint 5 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Closed GOP"         $X265 --preset medium --no-open-gop --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
@@ -1527,7 +1550,6 @@ jobs:
           /tmp/run_x265.sh "Psy-RD + Psy-RDOQ" $X265 --preset medium --psy-rd 1.5 --psy-rdoq 1.0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "No Psy"             $X265 --preset medium --no-psy-rd --no-psy-rdoq --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Multiple Slices"    $X265 --preset medium --slices 4 --crf 28 --input-res 832x480 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_832x480.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "Temporal Layers"    $X265 --preset medium --temporal-layers 3 --b-adapt 0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "HEVC-AQ"            $X265 --preset medium --hevc-aq --no-cutree --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "HME"                $X265 --preset medium --hme --crf 28 --input-res 832x480 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_832x480.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Lowpass DCT"        $X265 --preset medium --lowpass-dct --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
@@ -1607,7 +1629,7 @@ jobs:
             fi
             rm -f "$outfile"
           }
-          validate_encode "CRF ultrafast" --preset ultrafast --crf 28              --input-res 416x240 --fps 30 --frames 30
+          validate_encode "CRF ultrafast" --preset ultrafast --crf 28             --input-res 416x240 --fps 30 --frames 30
           validate_encode "CRF medium"    --preset medium   --crf 22              --input-res 416x240 --fps 30 --frames 30
           validate_encode "CRF veryslow"  --preset veryslow --crf 18              --input-res 416x240 --fps 30 --frames 30
           validate_encode "ABR + VBV"     --preset medium   --bitrate 500 --vbv-maxrate 500 --vbv-bufsize 500 -F4 --input-res 416x240 --fps 30 --frames 30
@@ -1820,9 +1842,19 @@ jobs:
             fi
             rm -f /tmp/out.hevc
           done
+          echo "### Presets in Hierarchical MiniGOP 16" >> /tmp/summary.log
+          for preset in ultrafast superfast veryfast faster fast medium slow slower veryslow; do
+            TOTAL=$((TOTAL + 1))
+            if /tmp/run_x265.sh "Preset $preset" $X265 --preset $preset --tune minigop16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv; then
+              PASS=$((PASS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+            rm -f /tmp/out.hevc
+          done
           echo "" >> /tmp/summary.log
           echo "### Tune Modes" >> /tmp/summary.log
-          for tune in psnr ssim grain fastdecode zerolatency; do
+          for tune in psnr ssim grain fastdecode zerolatency minigop8 minigop9nd minigop16 adaptminigop; do
             TOTAL=$((TOTAL + 1))
             if /tmp/run_x265.sh "Tune $tune" $X265 --preset medium --tune $tune --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv; then
               PASS=$((PASS + 1))
@@ -1875,7 +1907,17 @@ jobs:
           /tmp/run_x265.sh "Limit SAO"          $X265 --preset medium --limit-sao --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Weighted P+B"       $X265 --preset medium --weightp --weightb --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "B-frames 0"         $X265 --preset medium --bframes 0  --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "B-frames 16"        $X265 --preset medium --bframes 16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 16"                                 $X265 --preset medium --bframes 16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 16 + B-adapt 3"                     $X265 --preset medium --bframes 16 --b-adapt 3 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 2 + B-frames 9"              $X265 --preset medium --temporal-layers 2 --bframes 9 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 3"                           $X265 --preset medium --temporal-layers 3 --b-adapt 0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 3 Nondyadic + B-frames 8"    $X265 --preset medium --temporal-layers 3 --b-adapt 0 --bframes 8 --h-nondyadic-gop --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 4"                           $X265 --preset medium --temporal-layers 4 --b-adapt 0 --bframes 7 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5"                           $X265 --preset medium --temporal-layers 5 --b-adapt 0 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 1"               $X265 --preset medium --temporal-layers 5 --b-adapt 1 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 2"               $X265 --preset medium --temporal-layers 5 --b-adapt 2 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 3"               $X265 --preset medium --temporal-layers 5 --b-adapt 3 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-frames 7 + B-adapt 3"  $X265 --preset medium --temporal-layers 5 --b-adapt 3 --bframes 7 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Infinite Keyint"    $X265 --preset medium --keyint -1 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Short Keyint"       $X265 --preset medium --keyint 10 --min-keyint 5 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Closed GOP"         $X265 --preset medium --no-open-gop --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
@@ -1891,7 +1933,6 @@ jobs:
           /tmp/run_x265.sh "Psy-RD + Psy-RDOQ" $X265 --preset medium --psy-rd 1.5 --psy-rdoq 1.0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "No Psy"             $X265 --preset medium --no-psy-rd --no-psy-rdoq --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Multiple Slices"    $X265 --preset medium --slices 4 --crf 28 --input-res 832x480 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_832x480.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "Temporal Layers"    $X265 --preset medium --temporal-layers 3 --b-adapt 0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "HEVC-AQ"            $X265 --preset medium --hevc-aq --no-cutree --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "HME"                $X265 --preset medium --hme --crf 28 --input-res 832x480 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_832x480.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Lowpass DCT"        $X265 --preset medium --lowpass-dct --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
@@ -2200,9 +2241,19 @@ jobs:
             fi
             rm -f /tmp/out.hevc
           done
+          echo "### Presets in Hierarchical MiniGOP 16" >> /tmp/summary.log
+          for preset in ultrafast superfast veryfast faster fast medium slow slower veryslow; do
+            TOTAL=$((TOTAL + 1))
+            if /tmp/run_x265.sh "Preset $preset" $X265 --preset $preset --tune minigop16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv; then
+              PASS=$((PASS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+            rm -f /tmp/out.hevc
+          done
           echo "" >> /tmp/summary.log
           echo "### Tune Modes" >> /tmp/summary.log
-          for tune in psnr ssim grain fastdecode zerolatency; do
+          for tune in psnr ssim grain fastdecode zerolatency minigop8 minigop9nd minigop16 adaptminigop; do
             TOTAL=$((TOTAL + 1))
             if /tmp/run_x265.sh "Tune $tune" $X265 --preset medium --tune $tune --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv; then
               PASS=$((PASS + 1))
@@ -2254,8 +2305,18 @@ jobs:
           /tmp/run_x265.sh "No SAO/Deblock"     $X265 --preset medium --no-sao --no-deblock --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Limit SAO"          $X265 --preset medium --limit-sao --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Weighted P+B"       $X265 --preset medium --weightp --weightb --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "B-frames 0"         $X265 --preset medium --bframes 0  --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "B-frames 16"        $X265 --preset medium --bframes 16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 0"                                  $X265 --preset medium --bframes 0  --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 16"                                 $X265 --preset medium --bframes 16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 16 + B-adapt 3"                     $X265 --preset medium --bframes 16 --b-adapt 3 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 2 + B-frames 9"              $X265 --preset medium --temporal-layers 2 --bframes 9 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 3"                           $X265 --preset medium --temporal-layers 3 --b-adapt 0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 3 Nondyadic + B-frames 8"    $X265 --preset medium --temporal-layers 3 --b-adapt 0 --bframes 8 --h-nondyadic-gop --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 4"                           $X265 --preset medium --temporal-layers 4 --b-adapt 0 --bframes 7 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5"                           $X265 --preset medium --temporal-layers 5 --b-adapt 0 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 1"               $X265 --preset medium --temporal-layers 5 --b-adapt 1 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 2"               $X265 --preset medium --temporal-layers 5 --b-adapt 2 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 3"               $X265 --preset medium --temporal-layers 5 --b-adapt 3 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-frames 7 + B-adapt 3"  $X265 --preset medium --temporal-layers 5 --b-adapt 3 --bframes 7 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Infinite Keyint"    $X265 --preset medium --keyint -1 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Short Keyint"       $X265 --preset medium --keyint 10 --min-keyint 5 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Closed GOP"         $X265 --preset medium --no-open-gop --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
@@ -2271,7 +2332,6 @@ jobs:
           /tmp/run_x265.sh "Psy-RD + Psy-RDOQ" $X265 --preset medium --psy-rd 1.5 --psy-rdoq 1.0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "No Psy"             $X265 --preset medium --no-psy-rd --no-psy-rdoq --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Multiple Slices"    $X265 --preset medium --slices 4 --crf 28 --input-res 832x480 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_832x480.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "Temporal Layers"    $X265 --preset medium --temporal-layers 3 --b-adapt 0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "HEVC-AQ"            $X265 --preset medium --hevc-aq --no-cutree --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "HME"                $X265 --preset medium --hme --crf 28 --input-res 832x480 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_832x480.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Lowpass DCT"        $X265 --preset medium --lowpass-dct --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
@@ -2554,9 +2614,19 @@ jobs:
             fi
             rm -f /tmp/out.hevc
           done
+          echo "### Presets in Hierarchical MiniGOP 16" >> /tmp/summary.log
+          for preset in ultrafast superfast veryfast faster fast medium slow slower veryslow; do
+            TOTAL=$((TOTAL + 1))
+            if /tmp/run_x265.sh "Preset $preset" "$X265" --preset $preset --tune minigop16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv; then
+              PASS=$((PASS + 1))
+            else
+              FAIL=$((FAIL + 1))
+            fi
+            rm -f /tmp/out.hevc
+          done
           echo "" >> /tmp/summary.log
           echo "### Tune Modes" >> /tmp/summary.log
-          for tune in psnr ssim grain fastdecode zerolatency; do
+          for tune in psnr ssim grain fastdecode zerolatency minigop8 minigop9nd minigop16 adaptminigop; do
             TOTAL=$((TOTAL + 1))
             if /tmp/run_x265.sh "Tune $tune" "$X265" --preset medium --tune $tune --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv; then
               PASS=$((PASS + 1))
@@ -2609,7 +2679,17 @@ jobs:
           /tmp/run_x265.sh "Limit SAO"          "$X265" --preset medium --limit-sao --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Weighted P+B"       "$X265" --preset medium --weightp --weightb --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "B-frames 0"         "$X265" --preset medium --bframes 0  --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "B-frames 16"        "$X265" --preset medium --bframes 16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 16"                                 "$X265" --preset medium --bframes 16 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "B-frames 16 + B-adapt 3"                     "$X265" --preset medium --bframes 16 --b-adapt 3 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 2 + B-frames 9"              "$X265" --preset medium --temporal-layers 2 --bframes 9 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 3"                           "$X265" --preset medium --temporal-layers 3 --b-adapt 0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 3 Nondyadic + B-frames 8"    "$X265" --preset medium --temporal-layers 3 --b-adapt 0 --bframes 8 --h-nondyadic-gop --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 4"                           "$X265" --preset medium --temporal-layers 4 --b-adapt 0 --bframes 7 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5"                           "$X265" --preset medium --temporal-layers 5 --b-adapt 0 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 1"               "$X265" --preset medium --temporal-layers 5 --b-adapt 1 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 2"               "$X265" --preset medium --temporal-layers 5 --b-adapt 2 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-adapt 3"               "$X265" --preset medium --temporal-layers 5 --b-adapt 3 --bframes 15 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
+          /tmp/run_x265.sh "Temporal Layers 5 + B-frames 7 + B-adapt 3"  "$X265" --preset medium --temporal-layers 5 --b-adapt 3 --bframes 7 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Infinite Keyint"    "$X265" --preset medium --keyint -1 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Short Keyint"       "$X265" --preset medium --keyint 10 --min-keyint 5 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Closed GOP"         "$X265" --preset medium --no-open-gop --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
@@ -2625,7 +2705,6 @@ jobs:
           /tmp/run_x265.sh "Psy-RD + Psy-RDOQ" "$X265" --preset medium --psy-rd 1.5 --psy-rdoq 1.0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "No Psy"             "$X265" --preset medium --no-psy-rd --no-psy-rdoq --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Multiple Slices"    "$X265" --preset medium --slices 4 --crf 28 --input-res 832x480 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_832x480.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
-          /tmp/run_x265.sh "Temporal Layers"    "$X265" --preset medium --temporal-layers 3 --b-adapt 0 --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "HEVC-AQ"            "$X265" --preset medium --hevc-aq --no-cutree --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "HME"                "$X265" --preset medium --hme --crf 28 --input-res 832x480 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_832x480.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
           /tmp/run_x265.sh "Lowpass DCT"        "$X265" --preset medium --lowpass-dct --crf 28 --input-res 416x240 --fps 30 --frames 30 -o /tmp/out.hevc testdata/test_8bit_416x240.yuv || FAIL=$((FAIL+1)); rm -f /tmp/out.hevc
